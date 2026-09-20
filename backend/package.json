@@ -1,0 +1,15 @@
+{
+  "name": "kiro-herdr-views-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Node backend for the Kiro Herdr Views app: PTY multiplexer with WebSocket + SSE transport.",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0",
+    "ws": "^8.18.0",
+    "express": "^4.21.0"
+  }
+}

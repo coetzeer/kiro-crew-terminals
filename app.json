@@ -1,0 +1,47 @@
+{
+  "name": "kiro-herdr-views",
+  "version": "0.1.0",
+  "displayName": "Herdr Views",
+  "description": "A long-lived terminal-session panel for the Crew dashboard. Attach to real, interactive tmux / screen / zellij / herdr / agent-of-empires sessions running on your host (and later, remote hosts) — a Herdr or agent-of-empires style view, in a web page.",
+  "author": "you",
+  "license": "Apache-2.0",
+  "minCrewVersion": "0.1.0",
+  "tags": ["terminal", "sessions", "multiplexing", "tmux", "screen", "zellij", "herdr", "aoe", "ssh"],
+  "backend": {
+    "entryPoint": "backend/server.mjs",
+    "type": "node",
+    "port": "auto",
+    "healthCheck": "/health",
+    "routes": "/api/apps/kiro-herdr-views"
+  },
+  "ui": {
+    "entry": "ui/dist/index.mjs",
+    "pages": [
+      {
+        "route": "/apps/kiro-herdr-views",
+        "label": "Herdr Views",
+        "icon": "Terminal",
+        "entryPoint": "ui/dist/index.mjs",
+        "mountFunction": "mount"
+      }
+    ],
+    "sidebar": { "section": "Apps", "order": 10 }
+  },
+  "permissions": {
+    "api": ["/api/apps/kiro-herdr-views"],
+    "network": false,
+    "storage": true,
+    "jobs": false,
+    "cron": false
+  },
+  "setup": {
+    "onInstall": "cd ui && npm install && npm run build && cd .. && npm install --omit=dev",
+    "onUpdate": "cd ui && npm install && npm run build && cd .. && npm install --omit=dev",
+    "onEnable": "echo enabled",
+    "onDisable": "echo disabled"
+  },
+  "platform": {
+    "os": ["linux", "macos", "windows"],
+    "installMode": "server"
+  }
+}
