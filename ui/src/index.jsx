@@ -175,17 +175,25 @@ function CreateForm({ providers, onCreated }) {
 
   const cmdTouchedRef = React.useRef(false);
   const lastFetchRef = React.useRef('');
+  const reqSeqRef = React.useRef(0);
+  const mountedRef = React.useRef(true);
 
   React.useEffect(() => {
     cmdTouchedRef.current = cmdTouched;
   }, [cmdTouched]);
 
+  // Unmount-only guard. The effect below writes `name`, which re-runs it through
+  // its own dependency list — so a per-run `cancelled` flag would cancel the very
+  // request that run just started, leaving the form stuck on "Loading…" forever
+  // with the command never filled in. Track staleness per request instead: a
+  // superseded response is ignored, but the latest one always settles the form.
+  React.useEffect(() => () => { mountedRef.current = false; }, []);
+
   const avail = (providers || []).filter((p) => p.available);
 
   React.useEffect(() => {
-    let cancelled = false;
-
     if (!provider) {
+      reqSeqRef.current += 1; // invalidate any in-flight default-command fetch
       if (!cmdTouchedRef.current) setCmd('');
       setError('');
       setLoading(false);
@@ -207,21 +215,20 @@ function CreateForm({ providers, onCreated }) {
 
     setLoading(true);
     setError('');
+    const seq = ++reqSeqRef.current;
+    const superseded = () => seq !== reqSeqRef.current || !mountedRef.current;
     apiGet(px('/providers/' + encodeURIComponent(provider) + '/create-command?name=' + encodeURIComponent(effName)))
       .then((res) => {
-        if (cancelled || cmdTouchedRef.current) return;
-        const joined = (res && res.cmd ? res.cmd : []).join(' ');
-        if (cancelled || cmdTouchedRef.current) return;
-        setCmd(joined);
+        if (superseded() || cmdTouchedRef.current) return;
+        setCmd((res && res.cmd ? res.cmd : []).join(' '));
       })
       .catch((e) => {
-        if (cancelled || cmdTouchedRef.current) return;
+        if (superseded() || cmdTouchedRef.current) return;
         setError('Failed to load default command: ' + String(e));
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!superseded()) setLoading(false);
       });
-    return () => { cancelled = true; };
   }, [provider, name]);
 
   const submit = async (e) => {
