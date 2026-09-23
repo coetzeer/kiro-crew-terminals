@@ -1,0 +1,14 @@
+{
+  "name": "kiro-herdr-views",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Kiro Crew app: long-lived terminal-session panel (tmux / screen / zellij / herdr / aoe).",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "node-pty": "^1.0.0",
+    "ws": "^8.18.0"
+  }
+}

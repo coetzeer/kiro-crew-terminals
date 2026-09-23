@@ -15,7 +15,7 @@ function injectCss() {
 }
 
 const APP = 'kiro-herdr-views';
-const PROXY_BASE = '/apps/' + APP + '/api';
+const PROXY_BASE = '/api/apps/' + APP;
 const PANE_KEY = 'kiro-herdr-views:panes';
 const px = (p) => PROXY_BASE + p;
 
@@ -169,26 +169,85 @@ function CreateForm({ providers, onCreated }) {
   const [name, setName] = React.useState('');
   const [cmd, setCmd] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [cmdTouched, setCmdTouched] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const cmdTouchedRef = React.useRef(false);
+  const lastFetchRef = React.useRef('');
+
+  React.useEffect(() => {
+    cmdTouchedRef.current = cmdTouched;
+  }, [cmdTouched]);
 
   const avail = (providers || []).filter((p) => p.available);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (!provider) {
+      if (!cmdTouchedRef.current) setCmd('');
+      setError('');
+      setLoading(false);
+      lastFetchRef.current = '';
+      return;
+    }
+
+    const trimmed = name && name.trim();
+    const effName = trimmed || (provider + '-session');
+    if (!trimmed) setName(provider + '-session');
+
+    if (lastFetchRef.current === effName) return;
+    lastFetchRef.current = effName;
+
+    if (cmdTouchedRef.current) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    apiGet(px('/providers/' + encodeURIComponent(provider) + '/create-command?name=' + encodeURIComponent(effName)))
+      .then((res) => {
+        if (cancelled || cmdTouchedRef.current) return;
+        const joined = (res && res.cmd ? res.cmd : []).join(' ');
+        if (cancelled || cmdTouchedRef.current) return;
+        setCmd(joined);
+      })
+      .catch((e) => {
+        if (cancelled || cmdTouchedRef.current) return;
+        setError('Failed to load default command: ' + String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [provider, name]);
 
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
+      const trimmedName = name && name.trim();
+      const effName = trimmedName || (provider ? provider + '-session' : '');
+      const hasCmd = cmd && cmd.trim();
       const body = {};
-      if (cmd && cmd.trim()) {
-        body.cmd = cmd.trim().split(/\s+/).filter(Boolean);
-        body.provider = provider || 'custom';
-      } else if (provider) {
-        body.provider = provider;
-        body.ref = name || provider + '-session';
-        if (name) body.name = name;
-      } else {
-        body.cmd = ['bash'];
+      if (provider) {
+        if (cmdTouched && hasCmd) {
+          body.provider = provider;
+          body.cmd = cmd.trim().split(/\s+/).filter(Boolean);
+        } else {
+          body.provider = provider;
+          body.name = effName;
+        }
+      } else if (hasCmd) {
         body.provider = 'custom';
+        body.cmd = cmd.trim().split(/\s+/).filter(Boolean);
+      } else {
+        body.provider = 'custom';
+        body.cmd = ['bash'];
       }
-      if (name && !body.name) body.name = name;
+      if (trimmedName && !body.name) body.name = trimmedName;
       const res = await apiPost(px('/sessions'), body);
       onCreated && onCreated(res.session);
       notify('Session attached: ' + (res.session.name || ''));
@@ -208,10 +267,30 @@ function CreateForm({ providers, onCreated }) {
         </select>
         <input className="hv-inp" placeholder="session name (optional)" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
-      <div className="hv-form-row">
-        <input className="hv-inp hv-wide" placeholder="attach command e.g. tmux attach -t myagent — or bash" value={cmd} onChange={(e) => setCmd(e.target.value)} />
+      <div className="hv-form-row" style={{ alignItems: 'flex-end' }}>
+        <input
+          className="hv-inp hv-wide"
+          placeholder={provider ? 'auto-filled from ' + provider + '; edit to switch to manual attach' : 'attach command e.g. tmux attach -t myagent — or bash'}
+          value={cmd}
+          onChange={(e) => {
+            const v = e.target.value;
+            setCmd(v);
+            if (!cmdTouched) {
+              setCmdTouched(true);
+              cmdTouchedRef.current = true;
+              setError('');
+            }
+          }}
+        />
+        {loading && <span className="hv-empty sm" style={{ display: 'block', marginTop: '2px' }}>loading default command…</span>}
       </div>
-      <button className="hv-btn" type="submit" disabled={busy}>{busy ? 'Attaching…' : 'Attach / New Session'}</button>
+      {error && <div className="hv-err">{error}</div>}
+      {provider && !cmdTouched && cmd && (
+        <span className="hv-empty sm" style={{ display: 'block', marginTop: '4px', marginBottom: '4px' }}>
+          Auto-filled from {provider}. Editing this field switches to manual attach mode.
+        </span>
+      )}
+      <button className="hv-btn" type="submit" disabled={busy || loading}>{busy ? 'Attaching…' : loading ? 'Loading…' : 'Attach / New Session'}</button>
     </form>
   );
 }
@@ -319,4 +398,6 @@ function mount(el) {
   return () => root.unmount();
 }
 
+injectCss();
+export default App;
 export { mount };

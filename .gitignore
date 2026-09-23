@@ -7,3 +7,4 @@ Thumbs.db
 !.env.example
 known-sessions.json
 .herdr-views/
+.kilo/

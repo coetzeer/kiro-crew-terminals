@@ -10,7 +10,11 @@ independent parts:
 
 - `backend/` — Node.js (Express + `ws` + `node-pty`). Owns PTY mirrors, persists known
   sessions, and re-attaches them on restart.
-- `ui/` — React + xterm.js, bundled by Vite into a self-contained `ui/dist/index.mjs`.
+- `ui/` — React + xterm.js, bundled by Vite into `ui/dist/index.mjs` which:
+  - Externalizes `react`, `react-dom`, `react-dom/client`, `react/jsx-runtime` to share the host's React instance.
+  - Bundles `xterm` and inlines CSS.
+  - Exports a **default React component** (`App`) for `React.lazy()` / `AppHost` compatibility.
+  - Exports a **named `mount(el)` function** for `app.json` `ui.pages[].mountFunction` compatibility.
 - `app.json` — the Kiro Crew app manifest (backend entry, UI page + mount, permissions,
   setup hooks).
 
@@ -22,10 +26,14 @@ independent parts:
 2. **`mount` must stay the exported UI entry.** `app.json` → `ui.pages[].mountFunction` is
    `"mount"`, and the page `entryPoint` is `ui/dist/index.mjs`. If `mount` is renamed or the
    file moved, the app won't render.
-3. **The signature must stay accurate.** `lib/proxy-verify.mjs` checks the gateway's
+3. **Default export must stay for React.lazy.** `AppHost` uses `React.lazy(() => import(...))`
+   and expects a default export. The bundle must export `App` as default.
+4. **React/ReactDOM must remain external.** The bundle must not bundle React/ReactDOM; they
+   are provided by the Kiro Crew host via import map. Duplicate React causes invariant #306.
+5. **The signature must stay accurate.** `lib/proxy-verify.mjs` checks the gateway's
    `X-Crew-Proxy` HMAC. Run gauge of "signed vs unsigned": `KIRO_HERRD_ALLOW_UNSIGNED=1`
    bypasses it — **only** for local dev/debug, never in production default.
-4. **Persistence path must stay under the app data dir.** `lib/session-manager.mjs` writes
+6. **Persistence path must stay under the app data dir.** `lib/session-manager.mjs` writes
    `known-sessions.json` under `appDataDir('kiro-herdr-views')` (`.herdr-views/`). Keep session
    state out of the repo — it's gitignored.
 
@@ -53,10 +61,13 @@ is a bug. CSS is inlined into the bundle (via `?inline` imports); the page loads
 ## Providers
 
 Each provider in `backend/providers/` subclasses [`lib/registry.mjs`](backend/lib/registry.mjs)'s
-`Provider` and implements `available()` / `list()` / `create()` and exposes an attach command.
-All five (tmux, screen, zellij, herdr, aoe) are first-class; keep them interchangeable so the
-registry can pick any. New providers (e.g. SSH/remote) are new files here — don't special-case
-them in `server.mjs`.
+`Provider` and implements `available()` / `list()` / `create()` / `createCommand()` and exposes an
+attach command. `createCommand(name)` returns the argv used to create a new session (e.g.
+`zellij --session <name> --detach`, `aoe new -n <name>`); the `GET /providers/:id/create-command`
+endpoint serves it to the UI. `create(name)` actually runs creation and returns the attach
+command for the new session. All five (tmux, screen, zellij, herdr, aoe) are first-class; keep
+them interchangeable so the registry can pick any. New providers (e.g. SSH/remote) are new
+files here — don't special-case them in `server.mjs`.
 
 ## Transport chain
 

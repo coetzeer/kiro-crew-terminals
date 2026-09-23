@@ -64,6 +64,24 @@ export function createServer(opts) {
     res.json({ sessions: sessionManager.knownList() });
   });
 
+  app.get(p('/providers/:id/create-command'), guard, function (req, res) {
+    const provId = req.params.id;
+    const name = req.query.name;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'name required' });
+    }
+    const prov = registry.get(provId);
+    if (!prov) {
+      return res.status(404).json({ error: 'provider not found' });
+    }
+    try {
+      const cmd = prov.createCommand(name.trim());
+      res.json({ cmd: cmd });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
 	 app.post(p('/sessions'), guard, function (req, res) {
     const body = req.body || {};
     const providerVal = body.provider;
@@ -91,6 +109,27 @@ export function createServer(opts) {
           if (!cmd) {
             return res.status(400).json({ error: 'no attach command available for that session' });
           }
+        }, function (err) {
+          res.status(500).json({ error: String(err) });
+        });
+        return;
+      }
+    }
+
+    if (providerVal && name && !ref && !cmd) {
+      const prov = registry.get(providerVal);
+      if (prov) {
+        prov.create(name).then(function (created) {
+          if (!created || !created.cmd || created.cmd.length === 0) {
+            return res.status(400).json({ error: 'no attach command returned for that session' });
+          }
+          const session = sessionManager.createSession({
+            providerId: providerVal,
+            name: created.name || name,
+            cmd: created.cmd,
+            cwd: cwd,
+          });
+          res.json({ session: session });
         }, function (err) {
           res.status(500).json({ error: String(err) });
         });
@@ -298,7 +337,14 @@ async function main() {
   console.log('[herdr-views] listening on 127.0.0.1:' + addr.port + ' (proxy base ' + BASE + ', restored ' + sessionManager.sessions.size + ' session(s))');
 }
 
-const isMain = process.env.KIRO_HERRD_MAIN === '1';
+// Run when executed directly (gateway spawn, `node server.mjs`, `make dev`) —
+// this is the standard ESM main-module check, so the gateway's subprocess spawn
+// (which does not set KIRO_HERRD_MAIN) still boots the listener. Keep the
+// createServer export usable by importers (tests, embedding).
+import { pathToFileURL } from 'node:url';
+
+const isMain = process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   main().catch(function (err) {
     console.error(err);
