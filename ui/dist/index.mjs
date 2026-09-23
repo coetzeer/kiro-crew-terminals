@@ -5996,7 +5996,7 @@ function ke() {
   z.textContent = Te + `
 ` + Me, document.head.appendChild(z);
 }
-const Oe = "kiro-herdr-views", Pe = "/api/apps/" + Oe, xe = "kiro-herdr-views:panes", ae = (z) => Pe + z;
+const Oe = "kiro-herdr-views", Pe = "/apps/" + Oe + "/api", xe = "kiro-herdr-views:panes", ae = (z) => Pe + z;
 function Ie() {
   try {
     const z = window.localStorage.getItem(xe), Y = z ? JSON.parse(z) : [];

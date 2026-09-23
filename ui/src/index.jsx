@@ -15,7 +15,7 @@ function injectCss() {
 }
 
 const APP = 'kiro-herdr-views';
-const PROXY_BASE = '/api/apps/' + APP;
+const PROXY_BASE = '/apps/' + APP + '/api';
 const PANE_KEY = 'kiro-herdr-views:panes';
 const px = (p) => PROXY_BASE + p;
 

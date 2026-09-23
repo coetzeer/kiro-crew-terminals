@@ -12,7 +12,10 @@ import { AoeProvider } from './providers/aoe.mjs';
 import { verifyProxyRequest } from './lib/proxy-verify.mjs';
 
 const APP_NAME = 'kiro-herdr-views';
-const BASE = '/api/apps/' + APP_NAME;
+// The gateway reverse-proxies /apps/{name}/api/{path} → backend /api/{path}
+// (routes.py handle_app_api_proxy).  The backend's route prefix must match
+// what the proxy forwards, so use /api here.
+const BASE = '/api';
 const DEFAULT_PORT = Number(process.env.KIRO_HERRD_PORT || 8787);
 
 function p(path) {
