@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { Provider } from './registry.mjs';
-import { findBin } from './paths.mjs';
+import { Provider } from '../lib/registry.mjs';
+import { findBin } from '../lib/paths.mjs';
 
 const run = (cmd, args) =>
   new Promise((resolve) => {
@@ -55,5 +55,9 @@ export class HerdrProvider extends Provider {
     const bin = findBin('herdr');
     await run(bin, ['init', '-y', name]);
     return { ref: name, name, provider: this.id, cmd: [bin, 'agent', 'repl', name] };
+  }
+
+  createCommand(name) {
+    return [this.bin, 'init', '-y', name];
   }
 }

@@ -15,13 +15,13 @@
     "routes": "/api/apps/kiro-herdr-views"
   },
   "ui": {
-    "entry": "ui/dist/index.mjs",
+    "entry": "dist/index.mjs",
     "pages": [
       {
         "route": "/apps/kiro-herdr-views",
         "label": "Herdr Views",
         "icon": "Terminal",
-        "entryPoint": "ui/dist/index.mjs",
+        "entryPoint": "dist/index.mjs",
         "mountFunction": "mount"
       }
     ],
@@ -35,8 +35,8 @@
     "cron": false
   },
   "setup": {
-    "onInstall": "cd ui && npm install && npm run build && cd .. && npm install --omit=dev",
-    "onUpdate": "cd ui && npm install && npm run build && cd .. && npm install --omit=dev",
+    "onInstall": "cd ui && npm install && npm run build && cd ../backend && npm install --omit=dev",
+    "onUpdate": "cd ui && npm install && npm run build && cd ../backend && npm install --omit=dev",
     "onEnable": "echo enabled",
     "onDisable": "echo disabled"
   },

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { Provider } from './registry.mjs';
-import { findBin } from './paths.mjs';
+import { Provider } from '../lib/registry.mjs';
+import { findBin } from '../lib/paths.mjs';
 
 const run = (cmd, args) =>
   new Promise((resolve) => {
@@ -36,5 +36,9 @@ export class ScreenProvider extends Provider {
     await new Promise((r) => setTimeout(r, 400));
     const sessions = await this.list();
     return sessions.find((s) => s.name === name) || { ref: name, name, provider: this.id, cmd: [bin, '-r', name] };
+  }
+
+  createCommand(name) {
+    return [this.bin, '-d', '-m', '-S', name, '/bin/bash', '-l'];
   }
 }

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { Provider } from './registry.mjs';
-import { findBin } from './paths.mjs';
+import { Provider } from '../lib/registry.mjs';
+import { findBin } from '../lib/paths.mjs';
 
 const run = (cmd, args) =>
   new Promise((resolve) => {
@@ -32,5 +32,9 @@ export class TmuxProvider extends Provider {
     const bin = findBin('tmux');
     await run(bin, ['new-session', '-d', '-s', name]);
     return { ref: name, name, provider: this.id, cmd: [bin, 'attach', '-t', name] };
+  }
+
+  createCommand(name) {
+    return [this.bin, 'new-session', '-d', '-s', name];
   }
 }
