@@ -21,6 +21,7 @@
         "route": "/apps/kiro-herdr-views",
         "label": "Herdr Views",
         "icon": "Terminal",
+        "iconUrl": "icon.svg",
         "entryPoint": "dist/index.mjs",
         "mountFunction": "mount"
       }
