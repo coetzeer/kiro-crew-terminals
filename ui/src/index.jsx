@@ -62,6 +62,55 @@ function notify(text, type) {
   console.log('[herdr-views]', text);
 }
 
+// The dashboard's active palette lives on <html> as CSS custom properties, and
+// this bundle runs in the dashboard's own document, so the terminal can borrow
+// the live theme instead of hardcoding a near-black that fights it.
+function cssVar(name, fallback) {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// getPropertyValue on a custom property returns the token stream with var()
+// already substituted, so a stack whose leading alias is unset comes back as
+// ",JetBrains Mono,…". xterm would reject that as a font-family, so drop the
+// empty entries before handing it over.
+function fontStack(name, fallback) {
+  const parts = cssVar(name, '').split(',').map((s) => s.trim()).filter(Boolean);
+  return parts.length ? parts.join(', ') : fallback;
+}
+
+function terminalTheme() {
+  const bg = cssVar('--bg', '#0b0e14');
+  const strong = cssVar('--text-strong', '#eee8d5');
+  return {
+    background: bg,
+    foreground: cssVar('--text', '#d7dae0'),
+    cursor: cssVar('--accent', '#3b82f6'),
+    cursorAccent: bg,
+    selectionBackground: cssVar('--accent-subtle', 'rgba(59,130,246,0.3)'),
+    black: cssVar('--bg-accent', '#073642'),
+    red: cssVar('--danger', '#dc322f'),
+    green: cssVar('--ok', '#859900'),
+    yellow: cssVar('--warn', '#b58900'),
+    blue: cssVar('--info', '#268bd2'),
+    magenta: cssVar('--term-magenta', '#c678dd'),
+    cyan: cssVar('--term-cyan', '#56b6c2'),
+    white: strong,
+    brightBlack: cssVar('--muted-strong', '#586e75'),
+    brightRed: cssVar('--danger', '#dc322f'),
+    brightGreen: cssVar('--ok', '#859900'),
+    brightYellow: cssVar('--warn', '#b58900'),
+    brightBlue: cssVar('--info', '#268bd2'),
+    brightMagenta: cssVar('--term-magenta', '#c678dd'),
+    brightCyan: cssVar('--term-cyan', '#56b6c2'),
+    brightWhite: strong,
+  };
+}
+
 function TerminalPane({ session, onClose }) {
   const containerRef = React.useRef(null);
   const modeRef = React.useRef('ws');
@@ -73,14 +122,26 @@ function TerminalPane({ session, onClose }) {
     const term = new Terminal({
       convertEol: true,
       fontSize: 13,
-      fontFamily: 'Menlo, Consolas, "DejaVu Sans Mono", monospace',
+      fontFamily: fontStack('--mono', 'Menlo, Consolas, "DejaVu Sans Mono", monospace'),
       cursorBlink: true,
-      theme: { background: '#0f1117', foreground: '#d7dae0' },
+      theme: terminalTheme(),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(containerRef.current);
     try { fit.fit(); } catch {}
+
+    // A theme switch (mode, colour theme, freshly installed pack) arrives as an
+    // attribute change on <html> or a new stylesheet in <head> — not as a React
+    // render this component could subscribe to — so watch the host document.
+    let themeObs = null;
+    try {
+      themeObs = new MutationObserver(() => {
+        try { term.options.theme = terminalTheme(); } catch {}
+      });
+      themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-color-theme', 'style'] });
+      themeObs.observe(document.head, { childList: true });
+    } catch {}
 
     const sendResize = () => {
       try {
@@ -109,6 +170,7 @@ function TerminalPane({ session, onClose }) {
       disposed = true;
       if (wsRef.current) { try { wsRef.current.close(); } catch {} }
       if (sseRef.current) { try { sseRef.current.close(); } catch {} }
+      if (themeObs) { try { themeObs.disconnect(); } catch {} }
       window.removeEventListener('resize', onWin);
     };
 
