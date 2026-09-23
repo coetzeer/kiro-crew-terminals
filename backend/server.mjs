@@ -36,7 +36,12 @@ export function createServer(opts) {
   registry.register(new HerdrProvider());
   registry.register(new AoeProvider());
 
-  app.use(express.json());
+  // Keep the raw bytes alongside the parsed body: the gateway's proxy HMAC is
+  // computed over sha256(body) as sent, so verification must hash the original
+  // bytes, not a re-serialization of the parsed object.
+  app.use(express.json({
+    verify: function (req, res, buf) { req.rawBody = buf; },
+  }));
 
   function guard(req, res, next) {
     if (allowUnsigned) return next();
