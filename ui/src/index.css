@@ -42,11 +42,33 @@
 }
 
 .hv-section-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted, #6b7488);
   margin: 18px 0 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.hv-section-title:hover {
+  color: var(--text, #d7dae0);
+}
+
+/* The chevron points right when the section is collapsed and rotates down when
+   it is open, so the state reads from the glyph as well as the hidden body. */
+.hv-chevron {
+  flex: none;
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+  opacity: 0.7;
+}
+
+.hv-section-title.hv-collapsed .hv-chevron {
+  transform: rotate(0deg);
 }
 
 .hv-prov-list {
@@ -56,6 +78,9 @@
 }
 
 .hv-prov {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 7px 10px;
   border-radius: 6px;
   cursor: pointer;
@@ -64,6 +89,13 @@
   border: 1px solid transparent;
   transition: background 0.12s ease;
 }
+.hv-prov-ico {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  color: var(--muted-strong, #9aa3b5);
+}
+.hv-prov.hv-active .hv-prov-ico { color: var(--text-strong, #fff); }
 
 .hv-prov:hover { background: var(--bg-hover, #161b26); }
 .hv-prov.hv-active {
@@ -90,9 +122,26 @@
 .hv-disc-item:hover { background: var(--bg-hover, #1c2436); }
 .hv-disc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok, #34d399); flex: 0 0 8px; }
 .hv-disc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hv-disc-prov { font-size: 10px; color: var(--muted, #6b7488); text-transform: uppercase; letter-spacing: 0.04em; }
+.hv-disc-prov {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--muted, #6b7488);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.hv-disc-ico {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  color: var(--muted-strong, #9aa3b5);
+}
 
-.hv-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+/* min-height:0 all the way down the flex chain: without it a flex child
+   refuses to shrink below its content size, and the terminal well stops
+   filling the pane. */
+.hv-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 .hv-form {
   display: flex;
@@ -104,7 +153,7 @@
      bar would otherwise sit flush with the content area and lose its edge. */
   background: var(--card, #0e1219);
 }
-.hv-form-row { display: flex; gap: 10px; flex: 1; min-width: 220px; }
+.hv-form-row { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 220px; }
 .hv-inp {
   background: var(--bg-elevated, #141926);
   border: 1px solid var(--border, #232c40);
@@ -134,37 +183,32 @@
 .hv-btn:hover:not(:disabled) { background: var(--accent-hover, #2563eb); }
 .hv-btn:disabled { opacity: 0.5; cursor: default; }
 
-/* Full-width inside the wrapping form flex row, plain text in the sidebar. */
-.hv-err { flex-basis: 100%; color: var(--danger, #f87171); font-size: 12px; padding: 2px 0; }
 
+/* One session at a time, filling everything the form does not use. Sessions are
+   navigated from the sidebar; there is deliberately no tiling. */
 .hv-panes {
   flex: 1;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  grid-auto-rows: minmax(300px, 1fr);
-  gap: 12px;
-  padding: 16px;
-  overflow-y: auto;
-  align-content: start;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  background: var(--bg, #0f1117);
 }
 
 /* Card frame, lighter header band, darker terminal well — the same three-step
    elevation the dashboard uses, so the pane reads as part of the page. */
 .hv-pane {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   background: var(--card, #0f1117);
-  border: 1px solid var(--border, #1d2435);
-  border-radius: 8px;
   overflow: hidden;
-  min-height: 300px;
-  box-shadow: var(--shadow-sm, none);
 }
 .hv-pane-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   padding: 6px 10px;
   background: var(--bg-elevated, #141a26);
   border-bottom: 1px solid var(--border, #1d2435);
@@ -172,12 +216,34 @@
   color: var(--muted, #9aa3b5);
 }
 .hv-pane-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--mono, Menlo, Consolas, monospace);
+  color: var(--text-strong, #e8ecf4);
+}
+.hv-pane-ico { width: 14px; height: 14px; flex: 0 0 14px; color: var(--muted-strong, #9aa3b5); }
+.hv-pane-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hv-pane-prov {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #6b7488);
+  flex: 0 0 auto;
+}
+.hv-pane-cmd {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--mono, Menlo, Consolas, monospace);
+  color: var(--muted, #6b7488);
 }
-.hv-close {
+.hv-pane-actions { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+
+.hv-btn-sm {
   background: transparent;
   border: 1px solid var(--border-strong, #2a3450);
   color: var(--muted, #9aa3b5);
@@ -187,18 +253,193 @@
   padding: 2px 8px;
   cursor: pointer;
 }
-.hv-close:hover { color: var(--text-strong, #fff); border-color: var(--accent, #3b82f6); }
-.hv-term { flex: 1; min-height: 260px; padding: 4px; height: 100%; background: var(--bg, #0f1117); }
+.hv-btn-sm:hover { color: var(--text-strong, #fff); border-color: var(--accent, #3b82f6); }
+.hv-danger:hover { color: var(--danger, #f87171); border-color: var(--danger, #f87171); }
+.hv-x {
+  background: transparent;
+  border: none;
+  color: var(--muted, #9aa3b5);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+  font-family: inherit;
+  padding: 3px 5px;
+  cursor: pointer;
+}
+.hv-x:hover { color: var(--text-strong, #fff); background: var(--bg-hover, #1c2436); }
+
+.hv-term { flex: 1; min-height: 0; padding: 4px 6px; background: var(--bg, #0f1117); }
 .hv-term .xterm { height: 100%; }
 
+/* A session that exited on its own stays visible so it can be restarted, rather
+   than being pruned out from under the view. */
+.hv-ended {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted, #6b7488);
+  font-size: 13px;
+}
+.hv-ended-title { color: var(--text-strong, #e8ecf4); font-size: 14px; font-weight: 600; }
+.hv-ended-note { max-width: 620px; }
+.hv-mono { font-family: var(--mono, Menlo, Consolas, monospace); color: var(--text, #c3cad9); }
+.hv-ended-actions { display: flex; gap: 8px; margin-top: 4px; }
+.hv-btn-ghost { background: transparent; border: 1px solid var(--border-strong, #2a3450); color: var(--text, #c3cad9); }
+.hv-btn-ghost:hover:not(:disabled) { background: var(--bg-hover, #1c2436); }
+
 .hv-welcome {
-  grid-column: 1 / -1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted, #6b7488);
   font-size: 13px;
   padding: 40px;
   text-align: center;
-  border: 1px dashed var(--border-strong, #232c40);
-  border-radius: 8px;
 }
 .hv-empty { color: var(--muted, #6b7488); font-size: 13px; padding: 8px; }
 .hv-empty.sm { font-size: 12px; padding: 4px 0; }
+
+/* --- Open-session navigation (the sidebar list that switches panes) --- */
+.hv-pset { display: flex; flex-direction: column; gap: 2px; }
+.hv-sess {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text, #c3cad9);
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  transition: background 0.12s ease;
+}
+.hv-sess:hover { background: var(--bg-hover, #1c2436); }
+.hv-sess.hv-active {
+  background: var(--bg-accent, #212a3b);
+  color: var(--text-strong, #fff);
+  border-left-color: var(--accent, #3b82f6);
+}
+.hv-sess-ico { width: 13px; height: 13px; flex: 0 0 13px; color: var(--muted-strong, #9aa3b5); }
+.hv-sess.hv-active .hv-sess-ico { color: var(--accent, #3b82f6); }
+.hv-sess-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hv-sess-prov { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, #6b7488); }
+.hv-sess-ended { opacity: 0.6; }
+.hv-sess-ended .hv-sess-ico { color: var(--danger, #f87171); }
+.hv-count {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--bg-elevated, #141926);
+  color: var(--muted-strong, #6b7488);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+/* A provider that is not installed: still listed, so the filter set is stable,
+   but visibly inert. */
+.hv-prov-na { opacity: 0.55; }
+
+/* Discovered session that is already open in a pane. */
+.hv-disc-open { border-color: var(--accent, #3b82f6); }
+.hv-disc-open .hv-disc-dot { background: var(--accent, #3b82f6); }
+
+.hv-warn {
+  flex-basis: 100%;
+  color: var(--warn, #b58900);
+  font-size: 12px;
+  padding: 2px 0;
+}
+.hv-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent, #3b82f6);
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* Inline, capped and truncated on purpose: the create bar sits above the
+   terminal, so every line it takes is a line the terminal loses. Full text in
+   the title attribute. */
+.hv-hint-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted, #6b7488);
+  cursor: default;
+  border-radius: 50%;
+  transition: color 0.15s, background 0.15s;
+}
+.hv-hint-icon:hover,
+.hv-hint-icon:focus-visible {
+  color: var(--fg, #c9d1e0);
+  background: var(--hover-bg, rgba(255,255,255,0.07));
+  outline: none;
+}
+
+/* Errors live here, not inline in the create bar: a fixed overlay pinned to the
+   corner so a long message can never resize the form or push the terminal down.
+   Toasts persist until dismissed (no auto-timeout). */
+.hv-toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.hv-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  background: var(--panel, #161b22);
+  color: var(--fg, #c9d1e0);
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+}
+.hv-toast-error {
+  border-color: var(--danger, #f87171);
+  border-left-width: 3px;
+}
+.hv-toast-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.hv-toast-close {
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted, #6b7488);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.hv-toast-close:hover,
+.hv-toast-close:focus-visible {
+  color: var(--fg, #c9d1e0);
+  outline: none;
+}

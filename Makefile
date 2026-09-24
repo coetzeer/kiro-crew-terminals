@@ -102,7 +102,14 @@ health:
 
 # --- Test ----------------------------------------------------------------
 
-test: test-ui test-backend
+test: test-unit test-ui test-backend
+
+# Framework-free unit tests via Node's built-in test runner (no extra deps).
+# Backend test files import the compiled node-pty (backend/node_modules),
+# which the build step ensures is present.
+test-unit:
+	@echo "==> Unit tests (node --test)"
+	node --test "backend/test/*.test.mjs" "ui/test/*.test.mjs"
 
 test-backend:
 	@echo "==> Backend syntax check"

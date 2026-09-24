@@ -11,13 +11,25 @@ export function dashEcho() {
   return isWindows() ? ['ping', '-n', '1', '127.0.0.1'] : ['echo', 'ok'];
 }
 
+// Called once per provider on every /providers poll. A synchronous spawn there
+// blocks the event loop, so memoise the answer for a short window: a tool
+// installed while the app is running still shows up within the TTL.
+const BIN_TTL_MS = 30000;
+const binCache = new Map();
+
 export function haveBin(bin) {
+  const now = Date.now();
+  const hit = binCache.get(bin);
+  if (hit && now - hit.at < BIN_TTL_MS) return hit.ok;
+  let ok = false;
   try {
     execFileSync(isWindows() ? 'where' : 'which', [bin], { stdio: 'ignore' });
-    return true;
+    ok = true;
   } catch {
-    return false;
+    ok = false;
   }
+  binCache.set(bin, { at: now, ok });
+  return ok;
 }
 
 export function findBin(bin) {

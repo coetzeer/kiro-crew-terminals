@@ -23,6 +23,49 @@ function p(path) {
   return BASE + path;
 }
 
+// Provider-native identity for a hand-written attach command, so a manual
+// `tmux attach -t work` maps onto the same mirror as the discovered "work"
+// session instead of opening a second view of it. Only flags that name a
+// session are considered; anything else falls through to the caller's default.
+function keyFromCmd(cmd) {
+  if (!Array.isArray(cmd)) return '';
+  const named = ['-t', '-S', '-s', '-r'];
+  for (let i = 0; i < cmd.length - 1; i++) {
+    if (named.includes(cmd[i]) && cmd[i + 1] && !cmd[i + 1].startsWith('-')) return cmd[i + 1];
+  }
+  const verb = cmd.findIndex((a) => a === 'attach');
+  if (verb >= 0 && cmd[verb + 1] && !cmd[verb + 1].startsWith('-')) return cmd[verb + 1];
+  return '';
+}
+
+function nextFreeName(id, taken) {
+  for (let i = 1; i <= 99; i++) {
+    const candidate = id + '-' + String(i).padStart(2, '0');
+    if (!taken.has(candidate)) return candidate;
+  }
+  return id + '-' + Math.random().toString(36).slice(2, 6);
+}
+
+// Custom shells have no host-side namespace to check, so the only names that
+// matter are the ones this backend already has mirrors for.
+function nextFreeCustomName(taken) {
+  return nextFreeName('custom', taken);
+}
+
+// Pick a session name that does not collide with a live one. Names are checked
+// against the provider's own list(), which is the same set the UI shows, so a
+// generated name can never land on top of an existing session — that collision
+// is what made every "new" session come out as tmux-session.
+async function freeName(prov, wanted) {
+  const sessions = await prov.list().catch(() => []);
+  const taken = new Set((sessions || []).map((s) => s && s.name).filter(Boolean));
+  return {
+    name: wanted || nextFreeName(prov.id, taken),
+    taken: Boolean(wanted) && taken.has(wanted),
+    suggested: nextFreeName(prov.id, taken),
+  };
+}
+
 export function createServer(opts) {
   const app = express();
   const server = http.createServer(app);
@@ -58,7 +101,10 @@ export function createServer(opts) {
 
   app.get(p('/providers'), guard, function (req, res) {
     registry.listAll().then(function (groups) {
-      res.json({ providers: groups, sessions: sessionManager.list() });
+      // `known` rides along so the UI can tell "the backend has forgotten this
+      // session" from "the backend has not finished restoring it yet" without a
+      // second round trip — it was pruning panes on the latter.
+      res.json({ providers: groups, sessions: sessionManager.list(), known: sessionManager.knownList() });
     }, function (err) {
       res.status(500).json({ error: String(err) });
     });
@@ -72,95 +118,150 @@ export function createServer(opts) {
     res.json({ sessions: sessionManager.knownList() });
   });
 
+  // `name` is optional now: without it the server proposes a free one, so the
+  // UI never has to invent a default (the old client-side `provider + '-session'`
+  // default is what produced three sessions all called tmux-session).
   app.get(p('/providers/:id/create-command'), guard, function (req, res) {
-    const provId = req.params.id;
-    const name = req.query.name;
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'name required' });
-    }
-    const prov = registry.get(provId);
+    const prov = registry.get(req.params.id);
     if (!prov) {
       return res.status(404).json({ error: 'provider not found' });
     }
-    try {
-      const cmd = prov.createCommand(name.trim());
-      res.json({ cmd: cmd });
-    } catch (err) {
+    const wanted = (req.query.name || '').trim();
+    freeName(prov, wanted).then(function (picked) {
+      res.json({ name: picked.name, cmd: prov.createCommand(picked.name), taken: picked.taken, suggested: picked.suggested });
+    }, function (err) {
       res.status(500).json({ error: String(err) });
-    }
+    });
   });
 
-	 app.post(p('/sessions'), guard, function (req, res) {
+  app.post(p('/sessions'), guard, async function (req, res) {
     const body = req.body || {};
     const providerVal = body.provider;
     const ref = body.ref;
-    const name = body.name;
+    const name = body.name && String(body.name).trim();
     const cmd = body.cmd;
     const cwd = body.cwd;
 
-    if (providerVal && ref && !cmd) {
-      const prov = registry.get(providerVal);
-      if (prov) {
-        prov.list().then(function (sessions) {
-          const found = sessions.find(function (s) {
-            return (s.ref === ref) || (s.name === ref);
-          });
-          if (found && found.cmd) {
-            const created = sessionManager.createSession({
-              providerId: providerVal,
-              name: found.name || ref,
-              cmd: found.cmd,
-              cwd: cwd,
-            });
-            return res.json({ session: created });
-          }
-          if (!cmd) {
-            return res.status(400).json({ error: 'no attach command available for that session' });
-          }
-        }, function (err) {
-          res.status(500).json({ error: String(err) });
+    try {
+      // Attach to a session the provider already knows about. The UI sends the
+      // provider's own ref for this (a screen pid, for instance) because the
+      // name is not enough to identify a screen session.
+      if (providerVal && ref && !cmd) {
+        const prov = registry.get(providerVal);
+        if (!prov) return res.status(404).json({ error: 'provider not found' });
+        const sessions = await prov.list().catch(() => []);
+        const found = (sessions || []).find(function (s) {
+          return s.ref === ref || s.name === ref;
         });
-        return;
-      }
-    }
-
-    if (providerVal && name && !ref && !cmd) {
-      const prov = registry.get(providerVal);
-      if (prov) {
-        prov.create(name).then(function (created) {
-          if (!created || !created.cmd || created.cmd.length === 0) {
-            return res.status(400).json({ error: 'no attach command returned for that session' });
-          }
-          const session = sessionManager.createSession({
+        if (!found || !found.cmd) {
+          return res.status(404).json({ error: 'no such ' + providerVal + ' session: ' + ref });
+        }
+        return res.json({
+          session: sessionManager.createSession({
             providerId: providerVal,
-            name: created.name || name,
+            name: found.name || ref,
+            key: found.ref || found.name,
+            cmd: found.cmd,
+            cwd: cwd,
+          }),
+        });
+      }
+
+      // Create a provider session, attaching to it. Without a name the server
+      // picks a free one, so "attach / new session" with an untouched form can
+      // never collide with what is already running.
+      if (providerVal && !cmd) {
+        const prov = registry.get(providerVal);
+        if (!prov) return res.status(404).json({ error: 'provider not found' });
+        const picked = await freeName(prov, name);
+        if (name && picked.taken) {
+          return res.status(409).json({
+            error: 'a ' + prov.id + ' session named "' + name + '" already exists',
+            suggested: picked.suggested,
+          });
+        }
+        const created = await prov.create(picked.name);
+        if (!created || !created.cmd || created.cmd.length === 0) {
+          return res.status(500).json({ error: 'provider returned no attach command for "' + picked.name + '"' });
+        }
+        return res.json({
+          session: sessionManager.createSession({
+            providerId: providerVal,
+            name: created.name || picked.name,
+            key: created.ref || created.name || picked.name,
             cmd: created.cmd,
             cwd: cwd,
-          });
-          res.json({ session: session });
-        }, function (err) {
-          res.status(500).json({ error: String(err) });
+          }),
         });
-        return;
       }
-    }
 
-    if (!cmd || cmd.length === 0) {
-      res.status(400).json({ error: 'cmd required' });
-      return;
-    }
-
-    try {
-      const created = sessionManager.createSession({
-        providerId: providerVal || 'custom',
-        name: name || ref || 'session',
-        cmd: cmd,
-        cwd: cwd,
+      // A hand-written command: a custom shell, or an explicit attach. Derive
+      // the identity from the command where it names one.
+      if (!cmd || cmd.length === 0) {
+        return res.status(400).json({ error: 'cmd required' });
+      }
+      const derived = keyFromCmd(cmd);
+      let finalName = name || derived;
+      let finalKey = derived || name;
+      if (!finalName) {
+        // Nothing in the command names a session (plain `bash`, say). Give it a
+        // free generated name rather than the shared fallback: mirrors are
+        // deduped by ref, so two "bash" attaches would otherwise collapse into
+        // one shell, which is not what a second attach asks for.
+        finalName = nextFreeCustomName(new Set(sessionManager.list().map((s) => s.name)));
+        finalKey = finalName;
+      }
+      return res.json({
+        session: sessionManager.createSession({
+          providerId: providerVal || 'custom',
+          name: finalName,
+          key: finalKey || undefined,
+          cmd: cmd,
+          cwd: cwd,
+        }),
       });
-      res.json({ session: created });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      const message = String((err && err.message) || err);
+      res.status(500).json({ error: message });
     }
+  });
+
+  // Drop a session. Always detaches this app's mirror; `?kill=1` additionally
+  // terminates the underlying host session, and only for providers that declare
+  // canKill(). Destructive-by-request, so the UI confirms before sending it.
+  app.delete(p('/sessions/:ref'), guard, function (req, res) {
+    const ref = req.params.ref;
+    const session = sessionManager.get(ref);
+    if (!session) {
+      return res.status(404).json({ error: 'no such session: ' + ref });
+    }
+    const wantKill = req.query.kill === '1';
+    if (!wantKill) {
+      sessionManager.close(ref);
+      return res.json({ ok: true, killed: false });
+    }
+    const prov = registry.get(session.providerId);
+    if (!prov || !prov.canKill()) {
+      sessionManager.close(ref);
+      return res.json({
+        ok: true,
+        killed: false,
+        reason: prov ? prov.id + ' sessions can only be stopped from ' + prov.id + ' itself' : 'unknown provider',
+      });
+    }
+    Promise.resolve(prov.kill({ key: session.key, name: session.name })).then(function (result) {
+      // The mirror's own attach process exits once the host session is gone;
+      // closing it here also covers the case where the kill only half worked.
+      sessionManager.close(ref);
+      res.json({
+        ok: true,
+        killed: Boolean(result && result.ok),
+        reason: (result && result.reason) || '',
+      });
+    }, function (err) {
+      sessionManager.close(ref);
+      res.json({ ok: true, killed: false, reason: String(err) });
+    });
   });
 
 	 app.post(p('/input'), guard, function (req, res) {
@@ -184,7 +285,7 @@ export function createServer(opts) {
       res.status(400).json({ error: 'ref required' });
       return;
     }
-    const ok = sessionManager.write(ref, null, { cols: cols, rows: rows });
+    const ok = sessionManager.write(ref, null, { resize: true, cols: cols, rows: rows });
     res.json({ ok: ok });
   });
 
@@ -290,7 +391,7 @@ export function createServer(opts) {
         } else if (msg.type === 'resize') {
           const cols = msg.cols;
           const rows = msg.rows;
-          sessionManager.write(ref, null, { cols: cols, rows: rows });
+          sessionManager.write(ref, null, { resize: true, cols: cols, rows: rows });
         }
       });
 
@@ -323,7 +424,9 @@ async function main() {
     const found = (groups || []).find(
       (s) => s.name === known.name || s.ref === known.ref || s.ref === known.name
     );
-    return found && found.cmd ? found.cmd : null;
+    // Hand back the fresh identity too: a screen session's key is its pid, which
+    // the persisted record cannot be trusted to still have.
+    return found && found.cmd ? { cmd: found.cmd, key: found.ref || found.name } : null;
   };
   await sessionManager.restore({ resolveCmd }).catch((err) => {
     console.warn('[herdr-views] restore incomplete:', err);
