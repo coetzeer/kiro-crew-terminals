@@ -185,16 +185,25 @@ When installed as a Crew app, the backend stores its state under the app data di
 
 ## Providers
 
-| Provider | Discovered sessions | Attach | Create |
-|----------|--------------------|--------|--------|
-| `tmux`   | `tmux list-sessions -F '#{session_name}:#{session_id}'` | `tmux attach -t <name>` | `tmux new-session -d -s <name>` |
-| `screen` | `screen -ls` | `screen -r <pid>` | `screen -d -m -S name /bin/bash -l` |
-| `zellij` | `zellij list-sessions -n` | `zellij attach <name>` | `zellij --session <name> --detach` |
-| `herdr`  | `herdr sessions --format json` / `herdr status --format json` | `herdr attach <name>` | `herdr init -y <name>` |
-| `aoe`    | `aoe status --format json` | `aoe attach <name>` | `aoe new -n <name>` |
+| Provider | Discovered sessions | Attach | Create | Kill |
+|----------|--------------------|--------|--------|------|
+| `tmux`   | `tmux list-sessions -F '#{session_name}'` | `tmux attach -t <name>` | `tmux new-session -d -s <name>` | `tmux kill-session -t '=<name>'` |
+| `screen` | `screen -ls` | `screen -r <pid>` | `screen -d -m -S name /bin/bash -l` | `screen -S <pid> -X quit` |
+| `zellij` | `zellij list-sessions --short` | `zellij attach <name>` | `zellij attach --create-background <name>` | `zellij delete-session --force <name>` |
+| `herdr`  | `herdr session list --json` | `herdr --session <name>` | `herdr --session <name>` | — (not supported) |
+| `aoe`    | `aoe list --json` | `aoe session attach <name>` | `aoe add --scratch -t <name>` + `aoe session start <name>` | — (not supported) |
 
-Each provider is implemented against a common interface in [`backend/lib/registry.mjs`](backend/lib/registry.mjs),
-so adding a new session manager (e.g. an SSH/remote tunnelled provider) is just a new file in
+Identity: a session is keyed by `provider:native-key`, where the native key is the session
+name for tmux/zellij and the **pid** for screen — screen allows two sessions to share a name,
+so the name alone cannot identify one. Kill is opt-in per provider (`canKill()`); the UI only
+offers it where it can work, and tmux/zellij use exact-match targets so killing `work` cannot
+hit `workshop`. Note that `zellij delete-session` exits non-zero when it force-kills a session
+that has a client attached (ours is), so the providers confirm against `list()` rather than
+trusting the exit code.
+
+Each provider is implemented against a common interface in [`backend/lib/registry.mjs`](backend/lib/registry.mjs)
+(`available` / `list` / `create` / `createCommand`, plus optional `canKill` / `kill`), so adding
+a new session manager (e.g. an SSH/remote tunnelled provider) is just a new file in
 [`backend/providers/`](backend/providers).
 
 ---
@@ -206,11 +215,12 @@ All routes except `/health` verify the gateway `X-Crew-Proxy` HMAC (unless
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/providers` | List provider groups + currently open mirror sessions |
+| GET | `/providers` | List provider groups (`id`/`label`/`available`/`killable`), open mirror sessions, and `known` (persisted) sessions |
 | GET | `/sessions` | List open mirror sessions |
 | GET | `/known` | List persisted (known) sessions across restarts |
-| GET | `/providers/:id/create-command?name=` | Provider-specific creation command for a new session (`zellij --session <name> --detach`, `aoe new -n <name>`, …) |
-| POST | `/sessions` | Attach a session. `provider`+`ref` attaches an existing discovered session; `provider`+`name` (no `ref`/`cmd`) creates a provider session; `cmd` (array) attaches manually/custom |
+| GET | `/providers/:id/create-command?name=` | Provider-specific creation command, plus the session name to use. `name` is optional: without it the server generates the lowest free `<provider>-<nn>` from the provider's live session list, and reports `taken`/`suggested` when the requested name is in use |
+| POST | `/sessions` | Attach a session. `provider`+`ref` attaches an existing discovered session by its provider-native ref; `provider` (no `ref`/`cmd`) creates a provider session, generating a free name when none is given (409 with `suggested` if the requested name exists); `cmd` (array) attaches manually/custom |
+| DELETE | `/sessions/:ref` | Drop this app's mirror for a session (detach — the host session keeps running). `?kill=1` additionally terminates the underlying session for providers where `killable` is true, and reports `{ killed, reason }` |
 | POST | `/input` | Write input to a session (`{ ref, data }`) |
 | POST | `/resize` | Resize a session PTY (`{ ref, cols, rows }`) |
 | GET | `/sse?ref=` | SSE output stream (fallback transport) |
@@ -219,8 +229,18 @@ All routes except `/health` verify the gateway `X-Crew-Proxy` HMAC (unless
 ### Creating sessions
 
 Selecting a provider in the UI auto-populates its provider-specific creation command
-(served by `GET /providers/:id/create-command?name=`) and a default session name. Editing
-the command switches to manual attach mode and sends it as `cmd` to `POST /sessions`.
+(served by `GET /providers/:id/create-command`) and shows the generated session name as a
+placeholder — the name field stays empty unless the user types one, so the generated default
+is per-provider instead of a value that sticks across provider changes. Editing the command
+switches to manual attach mode and sends it as `cmd` to `POST /sessions`.
+
+### Closing vs killing
+
+Closing a view (`✕`, or `DELETE /sessions/:ref`) only detaches this app's mirror: the tmux /
+screen / zellij session keeps running on the host, exactly as before. Killing is a separate,
+explicitly confirmed action that asks the provider to terminate the host session. Providers
+that have no stable stop verb (`herdr`, `aoe`) report `canKill: false` and the UI does not
+offer it.
 
 ---
 

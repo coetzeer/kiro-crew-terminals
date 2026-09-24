@@ -20,9 +20,15 @@ independent parts:
 
 ## Critical invariants — do not break
 
-1. **The mirror never kills the real session.** The backend runs *attach* commands
-   (`tmux attach`, `screen -r`, `herdr attach`, ...). It must **never** run `tmux kill-session`
-   or terminate the underlying host process. "Close" only detaches viewers.
+1. **Closing a view never kills the real session; killing is a separate, explicit request.**
+   The backend runs *attach* commands (`tmux attach`, `screen -r`, `herdr attach`, ...).
+   Closing a pane — or `DELETE /sessions/:ref` without `?kill=1` — only tears down this app's
+   mirror PTY, and the host session keeps running. Terminating a host session happens *only*
+   through `DELETE /sessions/:ref?kill=1`, *only* for a provider that declares `canKill()`, and
+   *only* from an action the user confirmed in the UI. Never kill as a side effect of closing,
+   never kill on a timeout or cleanup path, and never kill a session the user did not name.
+   (This replaces an earlier blanket ban on `kill-session`; the ban's intent — that nothing
+   destructive happens implicitly — is the part that still holds.)
 2. **`mount` must stay the exported UI entry.** `app.json` → `ui.pages[].mountFunction` is
    `"mount"`, and the page `entryPoint` is `ui/dist/index.mjs`. If `mount` is renamed or the
    file moved, the app won't render.
@@ -62,12 +68,19 @@ is a bug. CSS is inlined into the bundle (via `?inline` imports); the page loads
 
 Each provider in `backend/providers/` subclasses [`lib/registry.mjs`](backend/lib/registry.mjs)'s
 `Provider` and implements `available()` / `list()` / `create()` / `createCommand()` and exposes an
-attach command. `createCommand(name)` returns the argv used to create a new session (e.g.
-`zellij --session <name> --detach`, `aoe new -n <name>`); the `GET /providers/:id/create-command`
-endpoint serves it to the UI. `create(name)` actually runs creation and returns the attach
-command for the new session. All five (tmux, screen, zellij, herdr, aoe) are first-class; keep
-them interchangeable so the registry can pick any. New providers (e.g. SSH/remote) are new
-files here — don't special-case them in `server.mjs`.
+attach command, plus optional `canKill()` / `kill()` for providers with a stable stop verb.
+`createCommand(name)` returns the argv used to create a new session (e.g.
+`zellij attach --create-background <name>`, `aoe new -n <name>`); the
+`GET /providers/:id/create-command` endpoint serves it to the UI. `create(name)` actually runs
+creation and returns the attach command for the new session — it must **throw** when creation
+fails rather than returning an attach command for a session that was never made. `list()`
+returns `{ ref, name, provider, cmd }` per session, where `ref` is the provider-native identity
+(the name for tmux/zellij, the pid for screen). Capture stderr in `run()` and put it in the
+thrown `Error`: swallowing a CLI's message is how a broken flag went unnoticed for months.
+
+All five (tmux, screen, zellij, herdr, aoe) are first-class; keep them interchangeable so the
+registry can pick any. New providers (e.g. SSH/remote) are new files here — don't special-case
+them in `server.mjs`.
 
 ## Transport chain
 
