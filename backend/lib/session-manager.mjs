@@ -179,6 +179,7 @@ export class SessionManager extends EventEmitter {
       if (resolveCmd && typeof resolveCmd === 'function') {
         try {
           const resolved = await resolveCmd(k);
+          if (resolved === false) continue;
           if (resolved && Array.isArray(resolved) && resolved.length) {
             cmd = resolved;
           } else if (resolved && Array.isArray(resolved.cmd) && resolved.cmd.length) {
