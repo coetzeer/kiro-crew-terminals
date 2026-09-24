@@ -706,6 +706,24 @@ function App() {
     }
   };
 
+  const killDiscoveredSession = async (session) => {
+    const ok = window.confirm(
+      'Kill the ' + session.providerId + ' session "' + session.name + '"?\n\n'
+      + 'This terminates it on the host and cannot be undone.'
+    );
+    if (!ok) return;
+    const ref = session.providerId + ':' + (session.ref || session.name);
+    try {
+      const res = await apiDelete(px('/sessions/' + encodeURIComponent(ref)) + '?kill=1');
+      notify(res.killed
+        ? 'Killed ' + session.providerId + ':' + session.name
+        : 'Could not kill ' + session.providerId + ':' + session.name + '. ' + (res.reason || ''), res.killed ? 'info' : 'error');
+    } catch (e) {
+      notify('Kill failed — ' + String(e), 'error');
+    }
+    refresh();
+  };
+
   const killSession = async (session) => {
     const ok = window.confirm(
       'Kill the ' + session.providerId + ' session "' + session.name + '"?\n\n'
@@ -819,6 +837,15 @@ function App() {
                   <span className="hv-disc-dot" />
                   <span className="hv-disc-name">{s.name}</span>
                   <span className="hv-disc-prov"><ProviderIcon id={s.providerId} className="hv-disc-ico" />{s.providerId}</span>
+                  {killableFor(s.providerId) && (
+                    <button
+                      className="hv-kill"
+                      onClick={(e) => { e.stopPropagation(); killDiscoveredSession(s); }}
+                      title={'Force-stop this ' + s.providerId + ' session on the host — cannot be undone'}
+                    >
+                      Kill
+                    </button>
+                  )}
                 </div>
               );
             })}

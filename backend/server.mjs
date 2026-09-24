@@ -232,10 +232,32 @@ export function createServer(opts) {
   app.delete(p('/sessions/:ref'), guard, function (req, res) {
     const ref = req.params.ref;
     const session = sessionManager.get(ref);
+    const wantKill = req.query.kill === '1';
     if (!session) {
+      // A host session can be discovered before the dashboard has created a
+      // mirror for it. Killing must use its provider-native identity instead
+      // of requiring an otherwise unnecessary attach first.
+      const separator = ref.indexOf(':');
+      const providerId = separator > 0 ? ref.slice(0, separator) : '';
+      const nativeRef = separator > 0 ? ref.slice(separator + 1) : '';
+      const prov = registry.get(providerId);
+      if (wantKill && prov && prov.canKill() && nativeRef) {
+        return Promise.resolve(prov.list()).then(function (sessions) {
+          const found = (sessions || []).find(function (item) {
+            return item.ref === nativeRef || item.name === nativeRef;
+          });
+          if (!found) return res.status(404).json({ error: 'no such ' + providerId + ' session: ' + nativeRef });
+          return Promise.resolve(prov.kill({ key: found.ref || nativeRef, name: found.name || nativeRef })).then(function (result) {
+            res.json({ ok: true, killed: Boolean(result && result.ok), reason: (result && result.reason) || '' });
+          }, function (err) {
+            res.json({ ok: true, killed: false, reason: String(err) });
+          });
+        }, function () {
+          res.status(404).json({ error: 'no such ' + providerId + ' session: ' + nativeRef });
+        });
+      }
       return res.status(404).json({ error: 'no such session: ' + ref });
     }
-    const wantKill = req.query.kill === '1';
     if (!wantKill) {
       sessionManager.close(ref);
       return res.json({ ok: true, killed: false });

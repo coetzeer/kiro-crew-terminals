@@ -35,7 +35,7 @@ export class HerdrProvider extends Provider {
           .map((it) => {
             const name = String(it.name || '').trim();
             if (!name) return null;
-            return { ref: name, name, provider: this.id, cmd: [bin, '--session', name] };
+            return { ref: name, name, provider: this.id, running: it.running !== false, cmd: [bin, '--session', name] };
           })
           .filter(Boolean);
       } catch {
@@ -69,5 +69,23 @@ export class HerdrProvider extends Provider {
 
   createCommand(name) {
     return [this.bin, '--session', name];
+  }
+
+  canKill() {
+    return true;
+  }
+
+  async kill({ key, name }) {
+    const bin = findBin('herdr');
+    const target = String(key || name || '');
+    if (!target) return { ok: false, reason: 'no herdr session given' };
+    const r = await run(bin, ['session', 'stop', target]);
+    if (r.ok) return { ok: true };
+    // A stopped Herdr session remains in the persistent session list. Confirm
+    // its running state before reporting a failed stop to the user.
+    const still = await this.list();
+    const found = still.find((s) => s.name === target || s.ref === target);
+    if (!found || found.running === false) return { ok: true };
+    return { ok: false, reason: 'herdr could not stop session "' + target + '": ' + (r.err || 'unknown herdr error') };
   }
 }

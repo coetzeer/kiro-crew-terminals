@@ -57,11 +57,15 @@ export class AoeProvider extends Provider {
     // this step is how a pane comes up attached to nothing.
     const started = await run(bin, ['session', 'start', name]);
     if (!started.ok) {
+      const detail = started.err || 'unknown aoe error';
+      if (/agent hook paths have not been acknowledged/i.test(detail)) {
+        throw new Error('aoe created "' + name + '" but could not start it because agent hook paths need approval. Open the Agent of Empires TUI, approve those paths, then start or attach to this retained session.');
+      }
       // Undo the record we just made so a failed create does not leave a dead
       // session in `aoe list` for the user to clean up. Best-effort: the
       // original error is what matters and must still surface.
       await run(bin, ['remove', name]).catch(() => {});
-      throw new Error('aoe created "' + name + '" but could not start it: ' + (started.err || 'unknown aoe error'));
+      throw new Error('aoe created "' + name + '" but could not start it: ' + detail);
     }
     return { ref: name, name, provider: this.id, cmd: [bin, 'session', 'attach', name] };
   }
