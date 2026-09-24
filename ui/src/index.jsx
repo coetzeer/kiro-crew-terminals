@@ -27,7 +27,7 @@ function loadPanes() {
   try {
     const raw = window.localStorage.getItem(PANE_KEY);
     const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.filter((s) => s && s.ref && s.cmd) : [];
+    return Array.isArray(arr) ? arr.filter((s) => s && s.ref && s.cmd && s.providerId !== 'custom') : [];
   } catch {
     return [];
   }
@@ -386,18 +386,9 @@ function CreateForm({ providers, onCreated }) {
   const [name, setName] = React.useState('');
   const [suggested, setSuggested] = React.useState('');
   const [taken, setTaken] = React.useState(false);
-  const [cmd, setCmd] = React.useState('');
   const [busy, setBusy] = React.useState(false);
-  const [cmdTouched, setCmdTouched] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-
-  const cmdTouchedRef = React.useRef(false);
   const reqSeqRef = React.useRef(0);
   const mountedRef = React.useRef(true);
-
-  React.useEffect(() => {
-    cmdTouchedRef.current = cmdTouched;
-  }, [cmdTouched]);
 
   // Unmount-only guard: a response that settles after unmount must not setState.
   React.useEffect(() => () => { mountedRef.current = false; }, []);
@@ -412,12 +403,10 @@ function CreateForm({ providers, onCreated }) {
   // switching provider to screen or zellij kept it.
   React.useEffect(() => {
     if (!provider) {
-      reqSeqRef.current += 1; // invalidate any in-flight default-command fetch
+      reqSeqRef.current += 1; // invalidate any in-flight name lookup
       setSuggested('');
       setTaken(false);
-      setLoading(false);
       clearToast('create-command');
-      if (!cmdTouchedRef.current) setCmd('');
       return undefined;
     }
 
@@ -427,7 +416,6 @@ function CreateForm({ providers, onCreated }) {
     // The name is part of the create command, so typing one re-derives it —
     // debounced, to keep it to one request per pause in typing.
     const timer = setTimeout(() => {
-      setLoading(true);
       const url = px('/providers/' + encodeURIComponent(provider) + '/create-command')
         + (wanted ? '?name=' + encodeURIComponent(wanted) : '');
       apiGet(url)
@@ -439,21 +427,14 @@ function CreateForm({ providers, onCreated }) {
           // otherwise it just re-suggests the colliding name.
           setSuggested(pickNameToSuggest(res));
           setTaken(Boolean(res && res.taken));
-          if (!cmdTouchedRef.current) setCmd((res && res.cmd ? res.cmd : []).join(' '));
           clearToast('create-command');
         })
         .catch((e) => {
           if (cancelled || seq !== reqSeqRef.current || !mountedRef.current) return;
-          notify('Could not load the default command: ' + String(e), 'error', 'create-command');
+          notify('Could not load a session name: ' + String(e), 'error', 'create-command');
           setSuggested('');
-          // Clear rather than keep the previous provider's argv: leaving a
-          // stale command in the box is how "Auto-filled from zellij" came to
-          // sit above a tmux command, and submitting it used the wrong one.
-          if (!cmdTouchedRef.current) setCmd('');
-        })
-        .finally(() => {
-          if (!cancelled && seq === reqSeqRef.current && mountedRef.current) setLoading(false);
         });
+
     }, wanted ? 300 : 0);
 
     return () => { cancelled = true; clearTimeout(timer); };
@@ -467,9 +448,6 @@ function CreateForm({ providers, onCreated }) {
     setName('');
     setSuggested('');
     setTaken(false);
-    setCmdTouched(false);
-    cmdTouchedRef.current = false;
-    setCmd('');
     clearToast('create-command');
     clearToast('create-session');
   };
@@ -479,22 +457,8 @@ function CreateForm({ providers, onCreated }) {
     setBusy(true);
     clearToast('create-session');
     try {
-      const hasCmd = cmd && cmd.trim();
-      const body = {};
-      if (provider) {
-        if (cmdTouched && hasCmd) {
-          body.provider = provider;
-          body.cmd = cmd.trim().split(/\s+/).filter(Boolean);
-        } else {
-          body.provider = provider;
-        }
-      } else if (hasCmd) {
-        body.provider = 'custom';
-        body.cmd = cmd.trim().split(/\s+/).filter(Boolean);
-      } else {
-        body.provider = 'custom';
-        body.cmd = ['bash'];
-      }
+      if (!provider) throw new Error('Select a configured tool');
+      const body = { provider };
       // Sent only when the user typed one: with no name the server generates a
       // free one from the provider's live session list, so an untouched form
       // can never collide with what is already running.
@@ -505,9 +469,6 @@ function CreateForm({ providers, onCreated }) {
       // Reset so the next attach starts from a freshly generated name rather
       // than walking straight into "already exists" on the one just used.
       setName('');
-      setCmd('');
-      setCmdTouched(false);
-      cmdTouchedRef.current = false;
       setTaken(false);
     } catch (err) {
       notify(String(err && err.message ? err.message : err), 'error', 'create-session');
@@ -519,14 +480,14 @@ function CreateForm({ providers, onCreated }) {
   const hint = provider
     ? 'Attach / New Session creates the ' + provider + ' session'
       + (effName ? ' "' + effName + '"' : '')
-      + ' if it does not exist, then opens it. Editing the command switches to manual attach.'
-    : 'Pick a provider to create a managed session, or type any command — e.g. tmux attach -t myagent, or bash.';
+      + ' if it does not exist, then opens it.'
+    : 'Select a configured tool to create or attach to a managed session.';
 
   return (
     <form className="hv-form" onSubmit={submit}>
       <div className="hv-form-row">
         <select className="hv-inp" value={provider} onChange={(e) => pickProvider(e.target.value)}>
-          <option value="">Custom command</option>
+          <option value="" disabled>Select a tool</option>
           {avail.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
         <input
@@ -537,20 +498,6 @@ function CreateForm({ providers, onCreated }) {
         />
       </div>
       <div className="hv-form-row">
-        <input
-          className="hv-inp hv-wide"
-          placeholder="attach command e.g. tmux attach -t myagent — or bash"
-          value={cmd}
-          onChange={(e) => {
-            const v = e.target.value;
-            setCmd(v);
-            if (!cmdTouched) {
-              setCmdTouched(true);
-              cmdTouchedRef.current = true;
-            }
-          }}
-        />
-        {loading && <span className="hv-empty sm">loading default command…</span>}
         <button type="button" className="hv-hint-icon" title={hint} aria-label={hint} tabIndex={0}>
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="8" cy="8" r="6.5" />
@@ -565,8 +512,8 @@ function CreateForm({ providers, onCreated }) {
           <button type="button" className="hv-link" onClick={() => setName(suggested)}>Use "{suggested}"</button>
         </div>
       )}
-      <button className="hv-btn" type="submit" disabled={busy || loading}>
-        {busy ? 'Attaching…' : loading ? 'Loading…' : 'Attach / New Session'}
+      <button className="hv-btn" type="submit" disabled={busy || !provider}>
+        {busy ? 'Attaching…' : 'Attach / New Session'}
       </button>
     </form>
   );
@@ -684,10 +631,12 @@ function App() {
 
   const restartPane = async (session) => {
     const isProvider = Boolean(session.providerId && session.providerId !== 'custom');
+    if (!isProvider) {
+      notify('Custom command sessions are no longer supported. Choose a configured tool instead.', 'error');
+      return;
+    }
     try {
-      const res = await apiPost(px('/sessions'), isProvider
-        ? { provider: session.providerId, name: session.name }
-        : { provider: 'custom', cmd: session.cmd, name: session.name });
+      const res = await apiPost(px('/sessions'), { provider: session.providerId, name: session.name });
       closePane(session.ref);
       openPane(res.session);
     } catch (e) {
@@ -704,6 +653,24 @@ function App() {
       }
       notify('Could not restart ' + session.name + ' — ' + String(e), 'error');
     }
+  };
+
+  const killDiscoveredSession = async (session) => {
+    const ok = window.confirm(
+      'Kill the ' + session.providerId + ' session "' + session.name + '"?\n\n'
+      + 'This terminates it on the host and cannot be undone.'
+    );
+    if (!ok) return;
+    const ref = session.providerId + ':' + (session.ref || session.name);
+    try {
+      const res = await apiDelete(px('/sessions/' + encodeURIComponent(ref)) + '?kill=1');
+      notify(res.killed
+        ? 'Killed ' + session.providerId + ':' + session.name
+        : 'Could not kill ' + session.providerId + ':' + session.name + '. ' + (res.reason || ''), res.killed ? 'info' : 'error');
+    } catch (e) {
+      notify('Kill failed — ' + String(e), 'error');
+    }
+    refresh();
   };
 
   const killSession = async (session) => {
@@ -819,6 +786,15 @@ function App() {
                   <span className="hv-disc-dot" />
                   <span className="hv-disc-name">{s.name}</span>
                   <span className="hv-disc-prov"><ProviderIcon id={s.providerId} className="hv-disc-ico" />{s.providerId}</span>
+                  {killableFor(s.providerId) && (
+                    <button
+                      className="hv-kill"
+                      onClick={(e) => { e.stopPropagation(); killDiscoveredSession(s); }}
+                      title={'Force-stop this ' + s.providerId + ' session on the host — cannot be undone'}
+                    >
+                      Kill
+                    </button>
+                  )}
                 </div>
               );
             })}

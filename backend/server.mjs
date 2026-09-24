@@ -23,33 +23,12 @@ function p(path) {
   return BASE + path;
 }
 
-// Provider-native identity for a hand-written attach command, so a manual
-// `tmux attach -t work` maps onto the same mirror as the discovered "work"
-// session instead of opening a second view of it. Only flags that name a
-// session are considered; anything else falls through to the caller's default.
-function keyFromCmd(cmd) {
-  if (!Array.isArray(cmd)) return '';
-  const named = ['-t', '-S', '-s', '-r'];
-  for (let i = 0; i < cmd.length - 1; i++) {
-    if (named.includes(cmd[i]) && cmd[i + 1] && !cmd[i + 1].startsWith('-')) return cmd[i + 1];
-  }
-  const verb = cmd.findIndex((a) => a === 'attach');
-  if (verb >= 0 && cmd[verb + 1] && !cmd[verb + 1].startsWith('-')) return cmd[verb + 1];
-  return '';
-}
-
 function nextFreeName(id, taken) {
   for (let i = 1; i <= 99; i++) {
     const candidate = id + '-' + String(i).padStart(2, '0');
     if (!taken.has(candidate)) return candidate;
   }
   return id + '-' + Math.random().toString(36).slice(2, 6);
-}
-
-// Custom shells have no host-side namespace to check, so the only names that
-// matter are the ones this backend already has mirrors for.
-function nextFreeCustomName(taken) {
-  return nextFreeName('custom', taken);
 }
 
 // Pick a session name that does not collide with a live one. Names are checked
@@ -143,6 +122,8 @@ export function createServer(opts) {
     const cwd = body.cwd;
 
     try {
+      if (!providerVal) return res.status(400).json({ error: 'provider required' });
+      if (cmd) return res.status(400).json({ error: 'custom commands are not supported' });
       // Attach to a session the provider already knows about. The UI sends the
       // provider's own ref for this (a screen pid, for instance) because the
       // name is not enough to identify a screen session.
@@ -195,31 +176,7 @@ export function createServer(opts) {
         });
       }
 
-      // A hand-written command: a custom shell, or an explicit attach. Derive
-      // the identity from the command where it names one.
-      if (!cmd || cmd.length === 0) {
-        return res.status(400).json({ error: 'cmd required' });
-      }
-      const derived = keyFromCmd(cmd);
-      let finalName = name || derived;
-      let finalKey = derived || name;
-      if (!finalName) {
-        // Nothing in the command names a session (plain `bash`, say). Give it a
-        // free generated name rather than the shared fallback: mirrors are
-        // deduped by ref, so two "bash" attaches would otherwise collapse into
-        // one shell, which is not what a second attach asks for.
-        finalName = nextFreeCustomName(new Set(sessionManager.list().map((s) => s.name)));
-        finalKey = finalName;
-      }
-      return res.json({
-        session: sessionManager.createSession({
-          providerId: providerVal || 'custom',
-          name: finalName,
-          key: finalKey || undefined,
-          cmd: cmd,
-          cwd: cwd,
-        }),
-      });
+      return res.status(400).json({ error: 'provider required' });
     } catch (err) {
       const message = String((err && err.message) || err);
       res.status(500).json({ error: message });
@@ -232,10 +189,32 @@ export function createServer(opts) {
   app.delete(p('/sessions/:ref'), guard, function (req, res) {
     const ref = req.params.ref;
     const session = sessionManager.get(ref);
+    const wantKill = req.query.kill === '1';
     if (!session) {
+      // A host session can be discovered before the dashboard has created a
+      // mirror for it. Killing must use its provider-native identity instead
+      // of requiring an otherwise unnecessary attach first.
+      const separator = ref.indexOf(':');
+      const providerId = separator > 0 ? ref.slice(0, separator) : '';
+      const nativeRef = separator > 0 ? ref.slice(separator + 1) : '';
+      const prov = registry.get(providerId);
+      if (wantKill && prov && prov.canKill() && nativeRef) {
+        return Promise.resolve(prov.list()).then(function (sessions) {
+          const found = (sessions || []).find(function (item) {
+            return item.ref === nativeRef || item.name === nativeRef;
+          });
+          if (!found) return res.status(404).json({ error: 'no such ' + providerId + ' session: ' + nativeRef });
+          return Promise.resolve(prov.kill({ key: found.ref || nativeRef, name: found.name || nativeRef })).then(function (result) {
+            res.json({ ok: true, killed: Boolean(result && result.ok), reason: (result && result.reason) || '' });
+          }, function (err) {
+            res.json({ ok: true, killed: false, reason: String(err) });
+          });
+        }, function () {
+          res.status(404).json({ error: 'no such ' + providerId + ' session: ' + nativeRef });
+        });
+      }
       return res.status(404).json({ error: 'no such session: ' + ref });
     }
-    const wantKill = req.query.kill === '1';
     if (!wantKill) {
       sessionManager.close(ref);
       return res.json({ ok: true, killed: false });
@@ -418,6 +397,7 @@ async function main() {
   // session id can change across restarts, so ask the provider to re-resolve a
   // fresh attach command against the live host state first.
   const resolveCmd = async (known) => {
+    if (known.providerId === 'custom') return false;
     const prov = registry.get(known.providerId);
     if (!prov) return null;
     const groups = await prov.list().catch(() => []);

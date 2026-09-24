@@ -37,8 +37,8 @@ test('killable providers expose canKill, others refuse', () => {
   assert.equal(new TmuxProvider().canKill(), true);
   assert.equal(new ScreenProvider().canKill(), true);
   assert.equal(new ZellijProvider().canKill(), true);
-  // aoe and herdr are attach-only wrappers: their sessions live inside the host
-  // tool, so killing must be refused (the UI hides Kill where canKill() is false).
+  // AoE sessions need their own lifecycle UI, but Herdr exposes a supported
+  // headless stop command for the dashboard Kill action.
   assert.equal(new AoeProvider().canKill(), false);
-  assert.equal(new HerdrProvider().canKill(), false);
+  assert.equal(new HerdrProvider().canKill(), true);
 });
