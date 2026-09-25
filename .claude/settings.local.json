@@ -1,0 +1,22 @@
+{
+  "availableModels": [
+    "default",
+    "opus[1m]",
+    "claude-fable-5.1",
+    "claude-fable-5",
+    "sonnet[1m]",
+    "haiku",
+    "claude-opus-5",
+    "claude-opus-4-8-fast",
+    "claude-opus-4.8",
+    "claude-opus-4.7",
+    "claude-opus-4.6",
+    "claude-sonnet-4.6",
+    "claude-haiku-4.5",
+    "claude-opus-4.5",
+    "claude-sonnet-4.5",
+    "claude-opus-5-fast",
+    "deepseek-v4-flash-0731"
+  ],
+  "model": "claude-fable-5.1"
+}

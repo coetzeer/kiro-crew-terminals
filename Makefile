@@ -1,43 +1,26 @@
 # Kiro Herdr Views — build / test / install / dev
 #
-# Uses the Kiro Crew AppImage at ~/apps/KiroCrew-x86_64.AppImage
-# Set KIRO_APP to override the AppImage path.
+# install/uninstall drive the kirocrew CLI through scripts/kirocrew.sh, which
+# resolves it from $KIROCREW, then $PATH, then the mount of a running gateway,
+# and finally mounts the Kiro Crew AppImage headless (it bundles the CLI; the
+# AppImage itself is the Electron desktop app and takes no CLI verbs).
 #
 # Usage:
-#   make install    # install app into the running AppImage
+#   make install    # install this checkout into ~/.kiro/crew/apps
 #   make build      # rebuild UI + backend deps
 #   make test       # run available checks
 #   make dev        # run backend standalone for debugging
 #   make health     # curl the backend health endpoint
-#   make uninstall # remove the app from the AppImage (best-effort)
+#   make uninstall  # remove the app (per-app data is kept)
 
 KIRO_APP ?= $(HOME)/apps/KiroCrew-x86_64.AppImage
 APP_NAME ?= kiro-herdr-views
 APP_DIR ?= $(HOME)/.kiro/crew/apps/$(APP_NAME)
 
-# Locate the kirocrew CLI used for install/uninstall, so the AppImage (which
-# needs FUSE to mount — unavailable in most sandboxes) is only a last resort.
-# Priority: an explicit KIROCREW override, then $PATH, then the running
-# gateway's own AppImage mount — the gateway binary lives inside that mount and
-# is never on a normal terminal's $PATH.
-KIROCREW ?= $(shell command -v kirocrew 2>/dev/null || true)
-ifeq ($(strip $(KIROCREW)),)
-KIROCREW := $(shell \
-  found=""; \
-  for pid in $$(pgrep -f 'kiro_crew gateway' 2>/dev/null); do \
-    exe=$$(readlink /proc/$$pid/exe 2>/dev/null) || continue; \
-    root=$${exe%/resources/backend-dist/kirocrew-backend/bin/python3.12}; \
-    [ -n "$$root" ] && [ "$$root" != "$$exe" ] || continue; \
-    cli="$$root/resources/backend-dist/kirocrew-backend/bin/kirocrew"; \
-    if [ -x "$$cli" ]; then found="$$cli"; break; fi; \
-  done; \
-  [ -n "$$found" ] || for m in /tmp/.mount_*; do \
-    [ -d "$$m" ] || continue; \
-    cli="$$m/resources/backend-dist/kirocrew-backend/bin/kirocrew"; \
-    if [ -x "$$cli" ]; then found="$$cli"; break; fi; \
-  done; \
-  [ -n "$$found" ] && echo "$$found")
-endif
+# Discovery and any AppImage mounting live in scripts/kirocrew.sh; these are the
+# overrides it honours.
+KIROCREW ?=
+export KIRO_APP KIROCREW
 
 .PHONY: all build install test dev health uninstall clean
 
@@ -61,17 +44,10 @@ install: build
 	@echo "==> Installing $(APP_NAME)"
 	@if [ -d "$(APP_DIR)" ] && [ -f "$(APP_DIR)/app.json" ]; then \
 	  echo "==> Existing install found - uninstalling it first (per-app data is kept)"; \
-	  ( [ -n "$(KIROCREW)" ] && $(KIROCREW) app uninstall "$(APP_NAME)" >/dev/null 2>&1 ) \
-	    || PATH="/usr/bin:$$PATH" FUSERMOUNT_PROG=fusermount "$(KIRO_APP)" --app-uninstall "$(APP_NAME)" >/dev/null 2>&1 \
-	    || true; \
+	  scripts/kirocrew.sh app uninstall "$(APP_NAME)" >/dev/null 2>&1 || true; \
 	fi
-	@if [ -n "$(KIROCREW)" ]; then \
-	  echo "==> Staging app from $(CURDIR) via kirocrew"; \
-	  $(KIROCREW) app install "$(CURDIR)"; \
-	else \
-	  echo "==> Staging app from $(CURDIR) via AppImage (needs FUSE)"; \
-	  PATH="/usr/bin:$$PATH" FUSERMOUNT_PROG=fusermount "$(KIRO_APP)" --app-install "$(CURDIR)"; \
-	fi || { echo "install step failed"; exit 1; }
+	@echo "==> Staging app from $(CURDIR)"
+	@scripts/kirocrew.sh app install "$(CURDIR)"
 	@echo "==> Provisioning installed app deps (the gateway often skips onInstall npm hooks)"
 	@if [ -d "$(APP_DIR)/backend" ]; then \
 	  cd "$(APP_DIR)/backend" && npm install --omit=dev; \
@@ -83,11 +59,8 @@ install: build
 
 uninstall:
 	@echo "==> Uninstalling $(APP_NAME)"
-	@if [ -n "$(KIROCREW)" ]; then \
-	  $(KIROCREW) app uninstall "$(APP_NAME)"; \
-	else \
-	  PATH="/usr/bin:$$PATH" FUSERMOUNT_PROG=fusermount "$(KIRO_APP)" --app-uninstall "$(APP_NAME)"; \
-	fi || { echo "uninstall is best-effort; if $(APP_NAME) is already uninstalled this is expected)"; exit 0; }
+	@scripts/kirocrew.sh app uninstall "$(APP_NAME)" \
+	  || echo "(uninstall is best-effort; if $(APP_NAME) is already gone this is expected)"
 
 # --- Dev / debugging -----------------------------------------------------
 
