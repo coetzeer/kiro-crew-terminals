@@ -1,4 +1,4 @@
-# Agents.md
+# AGENTS.md
 
 Guidance for AI coding agents working in this repo. Read this before editing.
 
@@ -92,3 +92,12 @@ If you touch `server.mjs`, keep all three working — the UI auto-falls back.
 - ESM only. Use `node:`-prefixed built-ins.
 - UI is React 18 + xterm.js; CSS imported with `?inline` and injected by `mount`.
 - `.gitignore` excludes `node_modules/`, `*.log`, `.env*`, `known-sessions.json`, `.herdr-views/`.
+
+## Plans
+
+All repository plans must live under `plans/<theme>/` and follow the naming,
+metadata, section, and lifecycle schema in [`plans/README.md`](plans/README.md).
+Before creating or editing any plan, read that schema in full. Do not place a
+plan at the repository root or directly under `plans/`, and do not invent an
+alternate plan format. Plan filenames must retain their ISO creation-date
+prefix.
