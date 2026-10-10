@@ -30,7 +30,7 @@ All notable changes to this project will be documented in this file.
 
 - **Closing a view and killing a session are now different actions.** `✕` (pane header and
   sidebar row) only detaches this app's mirror — the host session keeps running. **Kill** asks
-  the provider to terminate the real session, behind a confirmation. `agents.md` invariant #1
+  the provider to terminate the real session, behind a confirmation. `AGENTS.md` invariant #1
   previously banned `kill-session` outright; it is rewritten to keep the intent (nothing
   destructive happens implicitly) while allowing the explicit, confirmed kill.
 
