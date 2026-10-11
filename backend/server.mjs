@@ -10,6 +10,7 @@ import { ZellijProvider } from './providers/zellij.mjs';
 import { HerdrProvider } from './providers/herdr.mjs';
 import { AoeProvider } from './providers/aoe.mjs';
 import { verifyProxyRequest } from './lib/proxy-verify.mjs';
+import { loadConfig, getProviderConfig, checkAoeDashboardPort } from './lib/config.mjs';
 
 const APP_NAME = 'kiro-herdr-views';
 // The gateway reverse-proxies /apps/{name}/api/{path} → backend /api/{path}
@@ -48,13 +49,18 @@ async function freeName(prov, wanted) {
 // The production registry. Split out so tests can inject a stub registry (a
 // real one would `which`/list actual host multiplexers) while runtime wiring
 // stays exactly as before.
-export function createDefaultRegistry() {
+export function createDefaultRegistry(config = null) {
   const registry = new ProviderRegistry();
   registry.register(new TmuxProvider());
   registry.register(new ScreenProvider());
   registry.register(new ZellijProvider());
   registry.register(new HerdrProvider());
-  registry.register(new AoeProvider());
+  
+  // If no config provided (e.g., in tests), register AOE by default
+  // Real registration logic with config checks happens in createServer
+  if (!config) {
+    registry.register(new AoeProvider());
+  }
   return registry;
 }
 
@@ -70,7 +76,41 @@ export function createServer(opts = {}) {
   const allowUnsigned = opts.allowUnsigned !== undefined
     ? Boolean(opts.allowUnsigned)
     : process.env.KIRO_HERRD_ALLOW_UNSIGNED === '1';
-  const registry = opts.registry || createDefaultRegistry();
+
+  // Load config for provider-specific settings
+  const config = opts.config || loadConfig();
+  
+  // Build registry with config-aware provider registration
+  const registry = opts.registry || createDefaultRegistry(config);
+  let aoeDisabledReason = null;
+  
+  // Check if AOE was disabled due to process check (sync)
+  const aoeConfig = getProviderConfig('aoe');
+  if (aoeConfig.enabled !== false && aoeConfig.checkForProcess) {
+    try {
+      const { execSync } = require('node:child_process');
+      const ps = execSync('pgrep -f "^aoe(\\s|$)"', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      if (ps.trim()) {
+        aoeDisabledReason = 'AOE process already running';
+      }
+    } catch {
+      // pgrep returns non-zero if no process found
+    }
+  }
+  
+  // Async check for dashboard port
+  if (aoeConfig.enabled !== false && aoeConfig.disableIfDashboardRunning) {
+    checkAoeDashboardPort(aoeConfig.dashboardPort || 4000).then((running) => {
+      if (running) {
+        aoeDisabledReason = 'AOE web dashboard detected on port ' + (aoeConfig.dashboardPort || 4000);
+        // Unregister AOE provider if it was registered
+        if (registry.get('aoe')) {
+          registry.providers.delete('aoe');
+          console.log('[herdr-views] AOE provider disabled (async):', aoeDisabledReason);
+        }
+      }
+    }).catch(() => {});
+  }
 
   // Keep the raw bytes alongside the parsed body: the gateway's proxy HMAC is
   // computed over sha256(body) as sent, so verification must hash the original
@@ -94,10 +134,17 @@ export function createServer(opts = {}) {
 
   app.get(p('/providers'), guard, function (req, res) {
     registry.listAll().then(function (groups) {
+      // Add AOE disabled status if applicable
+      const providersWithStatus = groups.map((g) => {
+        if (g.id === 'aoe' && aoeDisabledReason) {
+          return { ...g, available: false, disabledReason: aoeDisabledReason };
+        }
+        return g;
+      });
       // `known` rides along so the UI can tell "the backend has forgotten this
       // session" from "the backend has not finished restoring it yet" without a
       // second round trip — it was pruning panes on the latter.
-      res.json({ providers: groups, sessions: sessionManager.list(), known: sessionManager.knownList() });
+      res.json({ providers: providersWithStatus, sessions: sessionManager.list(), known: sessionManager.knownList() });
     }, function (err) {
       res.status(500).json({ error: String(err) });
     });
