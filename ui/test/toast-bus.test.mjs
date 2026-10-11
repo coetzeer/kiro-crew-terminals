@@ -1,6 +1,6 @@
-import { test } from 'node:test';
+import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { createToastBus, reduceToasts } from '../src/toast-bus.mjs';
+import { createToastBus, defaultHostPing, reduceToasts } from '../src/toast-bus.mjs';
 
 // Collect every event a bus emits so tests can assert dedupe/collapse behavior
 // exactly as the ToastHost overlay sees it.
@@ -111,4 +111,83 @@ test('subscribe returns an unsubscribe that stops delivery', () => {
   bus.pushToast('two', 'info', '');
 
   assert.equal(events.length, 1);
+});
+
+test('clearToast with an empty key is ignored entirely', () => {
+  const bus = createToastBus(() => {});
+  const events = collect(bus);
+  bus.notify('an error', 'error', 'real-key');
+  const before = events.length;
+  bus.clearToast('');
+  bus.clearToast(undefined);
+  bus.clearToast(null);
+  assert.equal(events.length, before, 'no clear event emitted');
+  assert.equal(bus.keyCount(), 1, 'real key still active');
+});
+
+test('a throwing subscriber does not prevent other subscribers from being notified', () => {
+  const bus = createToastBus(() => {});
+  const good = [];
+  bus.subscribe(() => { throw new Error('subscriber exploded'); });
+  bus.subscribe((evt) => good.push(evt));
+  bus.pushToast('survives', 'error', 'k');
+  assert.equal(good.length, 1);
+  assert.equal(good[0].toast.text, 'survives');
+});
+
+// --- the default host ping ----------------------------------------------------
+
+// defaultHostPing touches global `window` and `console`; both are swapped per
+// test and restored afterwards so nothing leaks into other files.
+const realWindow = globalThis.window;
+const realLog = console.log;
+afterEach(() => {
+  globalThis.window = realWindow;
+  console.log = realLog;
+});
+
+function withConsoleCaptured(fn) {
+  const lines = [];
+  console.log = (...args) => { lines.push(args.join(' ')); };
+  fn(lines);
+  return lines;
+}
+
+test('defaultHostPing posts to the host parent window when one exists', () => {
+  const posted = [];
+  globalThis.window = { parent: { postMessage: (msg, origin) => posted.push([msg, origin]) } };
+  withConsoleCaptured(() => {
+    defaultHostPing('error', 'something broke');
+  });
+  assert.equal(posted.length, 1);
+  assert.deepEqual(posted[0][0], {
+    source: 'kiro-herdr-views', type: 'notify', text: 'something broke', severity: 'error',
+  });
+  assert.equal(posted[0][1], '*');
+});
+
+test('defaultHostPing logs to the console when there is no host window', () => {
+  delete globalThis.window;
+  const lines = withConsoleCaptured(() => {
+    defaultHostPing('info', 'no host around');
+  });
+  assert.deepEqual(lines, ['[herdr-views] no host around']);
+});
+
+test('defaultHostPing tolerates a throwing host and still logs', () => {
+  globalThis.window = { parent: { postMessage: () => { throw new Error('cross-origin'); } } };
+  const lines = withConsoleCaptured(() => {
+    defaultHostPing('error', 'host hostile');
+  });
+  assert.deepEqual(lines, ['[herdr-views] host hostile']);
+});
+
+test('defaultHostPing skips the parent when the window is its own parent (no host)', () => {
+  const fake = { parent: null };
+  fake.parent = fake; // self-parented: the dashboard host is absent
+  globalThis.window = fake;
+  const lines = withConsoleCaptured(() => {
+    defaultHostPing('info', 'standalone');
+  });
+  assert.deepEqual(lines, ['[herdr-views] standalone']);
 });

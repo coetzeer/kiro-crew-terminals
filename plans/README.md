@@ -10,7 +10,7 @@ history and review.
 | --- | --- | --- | --- |
 | Frontend | [Custom terminal sidebar icon](frontend/2026-09-23-terminal-sidebar-icon.md) | 2026-09-23 | Completed |
 | Infrastructure | [Rename plugin `kiro-herdr-views` to `kiro-crew-terminals`](infrastructure/2026-09-23-rename-plugin-kiro-herdr-views.md) | 2026-09-23 | Completed |
-| Testing | [Unit test coverage improvements](testing/2026-10-11-unit-test-coverage.md) | 2026-10-11 | Proposed |
+| Testing | [Unit test coverage improvements](testing/2026-10-11-unit-test-coverage.md) | 2026-10-11 | Completed |
 
 ## Location and naming
 
