@@ -1,4 +1,54 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(npm install *)",
+      "Bash(node --test test/proxy-verify.test.mjs)",
+      "Bash(node --test test/session-manager-lifecycle.test.mjs)",
+      "Bash(node --test test/session-manager-lifecycle.test.mjs test/session-manager.test.mjs)",
+      "Bash(node --test test/server-routes.test.mjs)",
+      "Bash(node --test test/server-transports.test.mjs)",
+      "Bash(timeout 60 node --test --test-force-exit --test-reporter=spec test/server-transports.test.mjs)",
+      "Bash(sed -i \"s#'./test/helpers.mjs'#'/home/raymondcoetzee/git/kiro-crew-terminals-worktrees/turks/backend/test/helpers.mjs'#\" /tmp/ws-debug.mjs)",
+      "Bash(timeout 15 node /tmp/ws-debug.mjs)",
+      "Bash(cp /tmp/ws-debug.mjs ./ws-debug.mjs)",
+      "Bash(sed -i \"s#'/home/raymondcoetzee/git/kiro-crew-terminals-worktrees/turks/backend/test/helpers.mjs'#'./test/helpers.mjs'#\" ws-debug.mjs)",
+      "Bash(timeout 15 node ws-debug.mjs)",
+      "Bash(python3 -)",
+      "Bash(timeout 60 node --test --test-force-exit test/server-transports.test.mjs)",
+      "Bash(timeout 30 node --test --test-timeout=3000 --test-force-exit --test-name-pattern='input and resize' test/server-transports.test.mjs)",
+      "Bash(timeout 60 node --test --test-timeout=5000 --test-force-exit test/server-transports.test.mjs)",
+      "Bash(timeout 60 node --test --test-timeout=5000 test/providers-behavior.test.mjs)",
+      "Bash(timeout 60 node --test test/providers-behavior.test.mjs)",
+      "Bash(npm run *)",
+      "Bash(timeout 120 node --test \"backend/test/*.test.mjs\" \"ui/test/*.test.mjs\")",
+      "Bash(timeout 120 node --test --test-reporter=spec \"ui/test/actions.test.mjs\" \"ui/test/api.test.mjs\" \"ui/test/term-transport.test.mjs\")",
+      "Bash(timeout 60 node --test --experimental-test-coverage test/paths.test.mjs)",
+      "Bash(timeout 60 node --test --coverage test/paths.test.mjs)",
+      "Bash(timeout 120 node --test \"test/*.test.mjs\" \"../ui/test/*.test.mjs\")",
+      "Bash(make test *)",
+      "Bash(timeout 120 make test-coverage)",
+      "Bash(cd ui *)",
+      "Bash(sed -i 's/^- \\\\[ \\\\] /- [x] /' plans/testing/2026-10-11-unit-test-coverage.md)",
+      "Bash(sed -i 's/^status: proposed$/status: completed/' plans/testing/2026-10-11-unit-test-coverage.md)",
+      "Bash(npm test *)",
+      "Bash(git diff *)",
+      "Bash(git apply *)",
+      "Bash(node --check /tmp/sm-staged.mjs)",
+      "Bash(git commit -m ' *)",
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(gh pr create --base main --head turks --title 'Unit test coverage: session safety, providers, transports, UI state' --body ' *)",
+      "Read(//home/raymondcoetzee/.claude/**)",
+      "Read(//home/raymondcoetzee/git/kiro-crew-terminals/.claude/**)",
+      "Read(//home/raymondcoetzee/.claude/plugins/**)",
+      "Bash(git switch *)",
+      "Bash(git stash *)",
+      "Bash(git rebase *)"
+    ]
+  },
+  "model": "claude-fable-5.1",
   "availableModels": [
     "default",
     "opus[1m]",
@@ -17,6 +67,5 @@
     "claude-sonnet-4.5",
     "claude-opus-5-fast",
     "deepseek-v4-flash-0731"
-  ],
-  "model": "claude-fable-5.1"
+  ]
 }
