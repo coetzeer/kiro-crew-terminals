@@ -32,7 +32,7 @@ test('openDiscoveredSession attaches by provider-native ref, never by replaying 
     { api, onSession: (s) => opened.push(s) },
   );
   assert.equal(api.calls.post.length, 1);
-  assert.equal(api.calls.post[0].path, '/apps/kiro-herdr-views/api/sessions');
+  assert.equal(api.calls.post[0].path, '/apps/kiro-crew-terminals/api/sessions');
   // The ref, not the command, is the payload.
   assert.deepEqual(api.calls.post[0].body, { provider: 'screen', ref: '4242' });
   assert.deepEqual(opened, [{ ref: 'tmux:new', name: 'new' }]);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { computeProxySignature, verifyProxyRequest, loadAppSecret } from '../lib/proxy-verify.mjs';
 
 const SECRET = 'unit-test-secret';
-const APP = 'kiro-herdr-views';
+const APP = 'kiro-crew-terminals';
 
 beforeEach(() => {
   process.env.KIROCREW_PROXY_SECRET = SECRET;

@@ -1,4 +1,4 @@
-# Kiro Herdr Views — build / test / install / dev
+# Kiro Crew Terminals — build / test / install / dev
 #
 # install/uninstall drive the kirocrew CLI through scripts/kirocrew.sh, which
 # resolves it from $KIROCREW, then $PATH, then the mount of a running gateway,
@@ -14,7 +14,7 @@
 #   make uninstall  # remove the app (per-app data is kept)
 
 KIRO_APP ?= $(HOME)/apps/KiroCrew-x86_64.AppImage
-APP_NAME ?= kiro-herdr-views
+APP_NAME ?= kiro-crew-terminals
 APP_DIR ?= $(HOME)/.kiro/crew/apps/$(APP_NAME)
 
 # Discovery and any AppImage mounting live in scripts/kirocrew.sh; these are the

@@ -24,7 +24,7 @@ const pane = (ref, name = ref) => ({ ref, providerId: 'tmux', name, cmd: ['tmux'
 
 test('loadPanes returns valid persisted panes', () => {
   const storage = fakeStorage(new Map([
-    ['kiro-herdr-views:panes', JSON.stringify([pane('tmux:work')])],
+    ['kiro-crew-terminals:panes', JSON.stringify([pane('tmux:work')])],
   ]));
   const panes = loadPanes(storage);
   assert.equal(panes.length, 1);
@@ -32,15 +32,15 @@ test('loadPanes returns valid persisted panes', () => {
 });
 
 test('loadPanes returns an empty list for malformed JSON or non-array data', () => {
-  const broken = fakeStorage(new Map([['kiro-herdr-views:panes', '{ not json']]));
+  const broken = fakeStorage(new Map([['kiro-crew-terminals:panes', '{ not json']]));
   assert.deepEqual(loadPanes(broken), []);
-  const notArray = fakeStorage(new Map([['kiro-herdr-views:panes', '{"panes": []}']]));
+  const notArray = fakeStorage(new Map([['kiro-crew-terminals:panes', '{"panes": []}']]));
   assert.deepEqual(loadPanes(notArray), []);
   assert.deepEqual(loadPanes(fakeStorage()), []); // nothing stored
 });
 
 test('loadPanes filters entries without a ref or cmd, and custom sessions', () => {
-  const storage = fakeStorage(new Map([['kiro-herdr-views:panes', JSON.stringify([
+  const storage = fakeStorage(new Map([['kiro-crew-terminals:panes', JSON.stringify([
     pane('tmux:work'),
     { ref: 'no-cmd', providerId: 'tmux' },
     { providerId: 'tmux', cmd: ['tmux'] }, // no ref

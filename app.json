@@ -1,7 +1,7 @@
 {
-  "name": "kiro-herdr-views",
+  "name": "kiro-crew-terminals",
   "version": "0.1.0",
-  "displayName": "Herdr Views",
+  "displayName": "Crew Terminals",
   "description": "A long-lived terminal-session panel for the Crew dashboard. Attach to real, interactive tmux / screen / zellij / herdr / agent-of-empires sessions running on your host (and later, remote hosts) — a Herdr or agent-of-empires style view, in a web page.",
   "author": "you",
   "license": "Apache-2.0",
@@ -12,14 +12,14 @@
     "type": "node",
     "port": "auto",
     "healthCheck": "/health",
-    "routes": "/api/apps/kiro-herdr-views"
+    "routes": "/api/apps/kiro-crew-terminals"
   },
   "ui": {
     "entry": "dist/index.mjs",
     "pages": [
       {
-        "route": "/apps/kiro-herdr-views",
-        "label": "Herdr Views",
+        "route": "/apps/kiro-crew-terminals",
+        "label": "Crew Terminals",
         "icon": "Terminal",
         "iconUrl": "icon.svg",
         "entryPoint": "dist/index.mjs",
@@ -29,7 +29,7 @@
     "sidebar": { "section": "Apps", "order": 10 }
   },
   "permissions": {
-    "api": ["/api/apps/kiro-herdr-views"],
+    "api": ["/api/apps/kiro-crew-terminals"],
     "network": false,
     "storage": true,
     "jobs": false,

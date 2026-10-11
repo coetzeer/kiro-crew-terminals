@@ -35,7 +35,7 @@ test('apiGet sends same-origin credentials', async () => {
   const body = await apiGet(px('/providers'));
   assert.deepEqual(body, { providers: [] });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].path, '/apps/kiro-herdr-views/api/providers');
+  assert.equal(calls[0].path, '/apps/kiro-crew-terminals/api/providers');
   assert.deepEqual(calls[0].init, { credentials: 'same-origin' });
 });
 
@@ -77,14 +77,14 @@ test('errors fall back to the server-provided reason field', async () => {
 
 test('errors fall back to method, path and status when the body is not JSON', async () => {
   stubFetch(() => badJsonResponse(500));
-  await assert.rejects(() => apiDelete('/apps/kiro-herdr-views/api/sessions/tmux:work'), /DELETE .* -> 500/);
+  await assert.rejects(() => apiDelete('/apps/kiro-crew-terminals/api/sessions/tmux:work'), /DELETE .* -> 500/);
   stubFetch(() => badJsonResponse(502));
   await assert.rejects(() => apiGet(px('/providers')), /GET .* -> 502/);
 });
 
 test('killUrl encodes the reference and always carries the kill marker', () => {
-  assert.equal(killUrl('tmux:work'), '/apps/kiro-herdr-views/api/sessions/tmux%3Awork?kill=1');
-  assert.equal(killUrl('screen:12345'), '/apps/kiro-herdr-views/api/sessions/screen%3A12345?kill=1');
+  assert.equal(killUrl('tmux:work'), '/apps/kiro-crew-terminals/api/sessions/tmux%3Awork?kill=1');
+  assert.equal(killUrl('screen:12345'), '/apps/kiro-crew-terminals/api/sessions/screen%3A12345?kill=1');
   // A detach never goes through this URL: no kill marker anywhere else.
   assert.ok(!px('/sessions/tmux:work').includes('kill=1'));
 });

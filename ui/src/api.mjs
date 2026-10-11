@@ -2,7 +2,7 @@
 // (same-origin credentials, JSON serialization, server error surfacing) is
 // unit-testable without React. Components keep calling these helpers directly.
 
-export const APP = 'kiro-herdr-views';
+export const APP = 'kiro-crew-terminals';
 export const PROXY_BASE = '/apps/' + APP + '/api';
 
 export const px = (p) => PROXY_BASE + p;

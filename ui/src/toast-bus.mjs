@@ -68,10 +68,10 @@ export function defaultHostPing(severity, text) {
   try {
     // best-effort host toast; ignore failures when running without the host SDK
     if (typeof window !== 'undefined' && window.parent && typeof window.parent.postMessage === 'function' && window.parent !== window) {
-      window.parent.postMessage({ source: 'kiro-herdr-views', type: 'notify', text, severity }, '*');
+      window.parent.postMessage({ source: 'kiro-crew-terminals', type: 'notify', text, severity }, '*');
     }
   } catch {}
-  console.log('[herdr-views]', text);
+  console.log('[crew-terminals]', text);
 }
 
 // The singleton index.jsx renders. Tests build their own buses with a spy ping.

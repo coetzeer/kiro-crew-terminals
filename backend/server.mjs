@@ -12,7 +12,7 @@ import { AoeProvider } from './providers/aoe.mjs';
 import { verifyProxyRequest } from './lib/proxy-verify.mjs';
 import { loadConfig, getProviderConfig, checkAoeDashboardPort } from './lib/config.mjs';
 
-const APP_NAME = 'kiro-herdr-views';
+const APP_NAME = 'kiro-crew-terminals';
 // The gateway reverse-proxies /apps/{name}/api/{path} → backend /api/{path}
 // (routes.py handle_app_api_proxy).  The backend's route prefix must match
 // what the proxy forwards, so use /api here.
@@ -106,7 +106,7 @@ export function createServer(opts = {}) {
         // Unregister AOE provider if it was registered
         if (registry.get('aoe')) {
           registry.providers.delete('aoe');
-          console.log('[herdr-views] AOE provider disabled (async):', aoeDisabledReason);
+          console.log('[crew-terminals] AOE provider disabled (async):', aoeDisabledReason);
         }
       }
     }).catch(() => {});
@@ -470,7 +470,7 @@ async function main() {
     return found && found.cmd ? { cmd: found.cmd, key: found.ref || found.name } : null;
   };
   await sessionManager.restore({ resolveCmd }).catch((err) => {
-    console.warn('[herdr-views] restore incomplete:', err);
+    console.warn('[crew-terminals] restore incomplete:', err);
   });
 
   await new Promise(function (resolve, reject) {
@@ -486,7 +486,7 @@ async function main() {
   });
 
   const addr = server.address();
-  console.log('[herdr-views] listening on 127.0.0.1:' + addr.port + ' (proxy base ' + BASE + ', restored ' + sessionManager.sessions.size + ' session(s))');
+  console.log('[crew-terminals] listening on 127.0.0.1:' + addr.port + ' (proxy base ' + BASE + ', restored ' + sessionManager.sessions.size + ' session(s))');
 }
 
 // Run when executed directly (gateway spawn, `node server.mjs`, `make dev`) —

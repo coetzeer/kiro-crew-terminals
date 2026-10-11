@@ -6,5 +6,5 @@ Thumbs.db
 .env.*
 !.env.example
 known-sessions.json
-.herdr-views/
+.crew-terminals/
 .kilo/

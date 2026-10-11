@@ -1,4 +1,4 @@
-# CI for the Kiro Herdr Views app.
+# CI for the Kiro Crew Terminals app.
 #
 # The unit suite is deliberately run without node-pty: tests inject fake PTYs
 # and stub providers (plans/testing/2026-10-11-unit-test-coverage.md), so only

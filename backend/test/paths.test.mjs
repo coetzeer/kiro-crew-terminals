@@ -18,9 +18,9 @@ test('isWindows/dashEcho agree with the platform', () => {
 });
 
 test('appDataDir honours KIRO_HERRD_DATA_DIR and creates it', () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'herdr-paths-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'crew-terminals-paths-'));
   process.env.KIRO_HERRD_DATA_DIR = path.join(dir, 'nested', 'data');
-  const got = appDataDir('kiro-herdr-views');
+  const got = appDataDir('kiro-crew-terminals');
   assert.equal(got, process.env.KIRO_HERRD_DATA_DIR);
   assert.ok(statSync(got).isDirectory(), 'dir should be created');
   rmSync(dir, { recursive: true, force: true });
@@ -29,8 +29,8 @@ test('appDataDir honours KIRO_HERRD_DATA_DIR and creates it', () => {
 test('appDataDir falls back to the app-data convention when env is unset', () => {
   delete process.env.KIRO_HERRD_DATA_DIR;
   delete process.env.KIROCREW_APP_DATA;
-  const got = appDataDir('kiro-herdr-views');
-  assert.ok(got.endsWith(path.join('.kiro', 'crew', 'apps', 'kiro-herdr-views', '.herdr-views')), got);
+  const got = appDataDir('kiro-crew-terminals');
+  assert.ok(got.endsWith(path.join('.kiro', 'crew', 'apps', 'kiro-crew-terminals', '.crew-terminals')), got);
 });
 
 test('findBin returns the binary path or falls back to the bare name', () => {
@@ -38,15 +38,15 @@ test('findBin returns the binary path or falls back to the bare name', () => {
   assert.ok(sh.endsWith('sh'), sh);
   // A binary that cannot exist still yields the requested name (callers use it
   // as the argv[0]; the spawn then fails loudly instead of crashing).
-  assert.equal(findBin('kiro-herdr-views-no-such-bin'), 'kiro-herdr-views-no-such-bin');
+  assert.equal(findBin('kiro-crew-terminals-no-such-bin'), 'kiro-crew-terminals-no-such-bin');
 });
 
 test('haveBin is memoised and consults the real PATH', () => {
   const yes = haveBin('sh');
   assert.equal(yes, true);
-  const no = haveBin('kiro-herdr-views-no-such-bin');
+  const no = haveBin('kiro-crew-terminals-no-such-bin');
   assert.equal(no, false);
   // Second call within the TTL must not re-exec; behaviour must be identical.
   assert.equal(haveBin('sh'), yes);
-  assert.equal(haveBin('kiro-herdr-views-no-such-bin'), no);
+  assert.equal(haveBin('kiro-crew-terminals-no-such-bin'), no);
 });
