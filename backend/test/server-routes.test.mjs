@@ -26,7 +26,7 @@ test('health is served without proxy authentication on both paths', async () => 
     for (const path of ['/health', '/api/health']) {
       const res = await fetch(s.base + path);
       assert.equal(res.status, 200);
-      assert.deepEqual(await json(res), { ok: true, name: 'kiro-herdr-views' });
+      assert.deepEqual(await json(res), { ok: true, name: 'kiro-crew-terminals' });
     }
   } finally { await s.cleanup(); }
 });

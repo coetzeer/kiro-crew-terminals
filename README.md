@@ -1,4 +1,4 @@
-# Kiro Herdr Views
+# Kiro Crew Terminals
 
 A **Kiro Crew** app that puts long-lived, interactive terminal sessions into your
 dashboard — a *Herdr* or *agent-of-empires*-style view, rendered right in a web page.
@@ -42,7 +42,7 @@ are still there.
 That persistence is layered:
 
 - **Known-session registry** — every created session is written to
-  `known-sessions.json` in the app data dir (`.herdr-views/`).
+  `known-sessions.json` in the app data dir (`.crew-terminals/`).
 - **Auto-restore on restart** — on backend startup, stored sessions are re-attached
   automatically (re-resolving a fresh attach command, because provider state can change and
   screen PIDs are not stable across restarts). Mirrors that can no longer attach are dropped instead of
@@ -120,7 +120,7 @@ in the installed `ui/`, so the app dir is fully provisioned even when the gatewa
 the lifecycle hooks. Override the AppImage path with `KIRO_APP=...` and the app name/data
 dir with `APP_NAME=...` / `APP_DIR=...`. Because install/uninstall leave the app
 **disabled**, the final step is always: enable it from the dashboard
-(**App Store → Library → Herdr Views**) — the CLI and AppImage cannot enable from outside
+(**App Store → Library → Crew Terminals**) — the CLI and AppImage cannot enable from outside
 the dashboard.
 
 ### Install & enable
@@ -129,7 +129,7 @@ the dashboard.
 make install
 ```
 
-Then enable **Herdr Views** from **App Store → Library**. You can also install from the
+Then enable **Crew Terminals** from **App Store → Library**. You can also install from the
 dashboard via **App Store → Sources → Install from local path**.
 Installing and enabling runs the manifest's lifecycle hooks, which build the app:
 
@@ -138,22 +138,22 @@ Installing and enabling runs the manifest's lifecycle hooks, which build the app
 cd ui && npm install && npm run build && cd ../backend && npm install --omit=dev
 ```
 
-Once enabled, **Herdr Views** appears in the dashboard sidebar (`section: Apps`) at
-`/apps/kiro-herdr-views`. The gateway launches `backend/server.mjs` as a subprocess and
-reverse-proxies browser requests from `/apps/kiro-herdr-views/api/*` to backend `/api/*`.
+Once enabled, **Crew Terminals** appears in the dashboard sidebar (`section: Apps`) at
+`/apps/kiro-crew-terminals`. The gateway launches `backend/server.mjs` as a subprocess and
+reverse-proxies browser requests from `/apps/kiro-crew-terminals/api/*` to backend `/api/*`.
 
 ### Disable / uninstall
 
 ```bash
-kirocrew app disable kiro-herdr-views     # stops pages, backend, agents/skills/crons; keeps data
-kirocrew app uninstall kiro-herdr-views   # removes the app; keeps per-app data by default
-kirocrew app uninstall kiro-herdr-views --purge-data   # deletes data too (not reversible)
+kirocrew app disable kiro-crew-terminals     # stops pages, backend, agents/skills/crons; keeps data
+kirocrew app uninstall kiro-crew-terminals   # removes the app; keeps per-app data by default
+kirocrew app uninstall kiro-crew-terminals --purge-data   # deletes data too (not reversible)
 ```
 
 ### Iterating (dev mode)
 
 ```bash
-kirocrew app dev kiro-herdr-views
+kirocrew app dev kiro-crew-terminals
 ```
 
 Dev mode watches `ui/` (no-store UI serving) and broadcasts an `app_reload` event on any
@@ -162,7 +162,7 @@ agent/skill changes take effect on the next app invocation — no rebuild needed
 build step entirely, symlink the source tree so file deltas appear directly:
 
 ```bash
-ln -sfn /path/to/kiro-crew-terminals/ui ~/.kiro/crew/apps/kiro-herdr-views/ui
+ln -sfn /path/to/kiro-crew-terminals/ui ~/.kiro/crew/apps/kiro-crew-terminals/ui
 ```
 
 ### Run the backend standalone (dev / debugging)
@@ -189,9 +189,9 @@ compat but no longer required.)
 
 When installed as a Crew app, the backend stores its state under the app data dir:
 
-- `~/.kiro/crew/apps/kiro-herdr-views/.herdr-views/` — `known-sessions.json` and any
+- `~/.kiro/crew/apps/kiro-crew-terminals/.crew-terminals/` — `known-sessions.json` and any
   per-provider state. Overridable for standalone runs with `KIRO_HERRD_DATA_DIR`.
-- `~/.kiro/crew/apps/kiro-herdr-views/.app_secret` — the HMAC secret the gateway uses to
+- `~/.kiro/crew/apps/kiro-crew-terminals/.app_secret` — the HMAC secret the gateway uses to
   sign `X-KiroCrew-Proxy` headers (injected as `KIROCREW_PROXY_SECRET`; the legacy
   `KIRO_HERRD_APP_SECRET` fallback is also accepted). The backend
   verifies it via [`backend/lib/proxy-verify.mjs`](backend/lib/proxy-verify.mjs); set
@@ -226,7 +226,7 @@ a new session manager (e.g. an SSH/remote tunnelled provider) is just a new file
 
 ## API
 
-The browser calls `/apps/kiro-herdr-views/api/*`; the gateway forwards that to the
+The browser calls `/apps/kiro-crew-terminals/api/*`; the gateway forwards that to the
 backend's `/api/*` routes listed below.
 
 All routes except `/health` verify the gateway `X-KiroCrew-Proxy` HMAC (unless

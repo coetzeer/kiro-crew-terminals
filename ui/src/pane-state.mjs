@@ -3,8 +3,8 @@
 // are unit-testable. Everything is pure except the localStorage loaders, which
 // take an optional storage so tests never touch the real one.
 
-const PANE_KEY = 'kiro-herdr-views:panes';
-const ACTIVE_KEY = 'kiro-herdr-views:active';
+const PANE_KEY = 'kiro-crew-terminals:panes';
+const ACTIVE_KEY = 'kiro-crew-terminals:active';
 
 function defaultStorage() {
   try {

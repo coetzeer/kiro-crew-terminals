@@ -43,13 +43,13 @@ without deliberately revisiting the resize, persistence, and active-session mode
 5. **The signature must stay accurate.** `lib/proxy-verify.mjs` checks the gateway's
    `X-KiroCrew-Proxy` HMAC. The `KIRO_HERRD_ALLOW_UNSIGNED=1` flag bypasses it — **only** for local dev/debug, never in production default.
 6. **Persistence path must stay under the app data dir.** `lib/session-manager.mjs` writes
-   `known-sessions.json` under `appDataDir('kiro-herdr-views')` (`.herdr-views/`). Keep session
+   `known-sessions.json` under `appDataDir('kiro-crew-terminals')` (`.crew-terminals/`). Keep session
    state out of the repo — it's gitignored.
 7. **Only registered providers may spawn commands.** `POST /api/sessions` rejects caller-supplied
    `cmd` arrays. Preserve this boundary: the server resolves create/attach commands through a
    provider after validating its native session identity.
 8. **Keep the proxy path split straight.** The browser calls
-   `/apps/kiro-herdr-views/api/*`; the gateway forwards `/api/*` to the backend. UI helpers use
+   `/apps/kiro-crew-terminals/api/*`; the gateway forwards `/api/*` to the backend. UI helpers use
    the former and Express routes use the latter.
 
 ## Build steps that MUST be repeated after UI changes

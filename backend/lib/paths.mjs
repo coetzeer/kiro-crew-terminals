@@ -46,7 +46,7 @@ export function appDataDir(appName) {
   const base = process.env.KIRO_HERRD_DATA_DIR
     || (process.env.KIROCREW_APP_DATA
       ? path.join(process.env.KIROCREW_APP_DATA, appName)
-      : path.join(os.homedir(), '.kiro', 'crew', 'apps', appName, '.herdr-views'));
+      : path.join(os.homedir(), '.kiro', 'crew', 'apps', appName, '.crew-terminals'));
   if (!existsSync(base)) mkdirSync(base, { recursive: true });
   return base;
 }

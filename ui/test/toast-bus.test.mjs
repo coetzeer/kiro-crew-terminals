@@ -161,7 +161,7 @@ test('defaultHostPing posts to the host parent window when one exists', () => {
   });
   assert.equal(posted.length, 1);
   assert.deepEqual(posted[0][0], {
-    source: 'kiro-herdr-views', type: 'notify', text: 'something broke', severity: 'error',
+    source: 'kiro-crew-terminals', type: 'notify', text: 'something broke', severity: 'error',
   });
   assert.equal(posted[0][1], '*');
 });
@@ -171,7 +171,7 @@ test('defaultHostPing logs to the console when there is no host window', () => {
   const lines = withConsoleCaptured(() => {
     defaultHostPing('info', 'no host around');
   });
-  assert.deepEqual(lines, ['[herdr-views] no host around']);
+  assert.deepEqual(lines, ['[crew-terminals] no host around']);
 });
 
 test('defaultHostPing tolerates a throwing host and still logs', () => {
@@ -179,7 +179,7 @@ test('defaultHostPing tolerates a throwing host and still logs', () => {
   const lines = withConsoleCaptured(() => {
     defaultHostPing('error', 'host hostile');
   });
-  assert.deepEqual(lines, ['[herdr-views] host hostile']);
+  assert.deepEqual(lines, ['[crew-terminals] host hostile']);
 });
 
 test('defaultHostPing skips the parent when the window is its own parent (no host)', () => {
@@ -189,5 +189,5 @@ test('defaultHostPing skips the parent when the window is its own parent (no hos
   const lines = withConsoleCaptured(() => {
     defaultHostPing('info', 'standalone');
   });
-  assert.deepEqual(lines, ['[herdr-views] standalone']);
+  assert.deepEqual(lines, ['[crew-terminals] standalone']);
 });

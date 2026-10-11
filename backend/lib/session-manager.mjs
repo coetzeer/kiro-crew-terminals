@@ -53,9 +53,9 @@ export class SessionManager extends EventEmitter {
   ensureDir() {
     if (!this.dir) {
       // An injected dataDir keeps tests off the real app data dir; the default
-      // stays appDataDir('kiro-herdr-views') — invariant: session state lives
+      // stays appDataDir('kiro-crew-terminals') — invariant: session state lives
       // under the app data dir, never in the repo.
-      this.dir = this._dataDir || appDataDir('kiro-herdr-views');
+      this.dir = this._dataDir || appDataDir('kiro-crew-terminals');
       mkdirSync(this.dir, { recursive: true });
       this.stateFile = path.join(this.dir, 'known-sessions.json');
     }

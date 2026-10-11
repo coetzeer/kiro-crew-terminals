@@ -553,7 +553,7 @@ function App() {
     <div className="hv-root">
       <ToastHost />
       <div className="hv-sidebar">
-        <div className="hv-brand">Herdr Views</div>
+        <div className="hv-brand">Crew Terminals</div>
         <div className={'hv-section-title' + (collapsed.providers ? ' hv-collapsed' : '')} onClick={function () { toggleSection('providers'); }}>
           <svg className="hv-chevron" viewBox="0 0 24 24" width="14" height="14"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
           Providers

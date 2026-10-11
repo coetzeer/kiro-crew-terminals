@@ -51,28 +51,36 @@ the bundle must be regenerated after any source edits.
 
 ## Plan
 
-- [ ] `app.json`: set `name`, `routes`, `permissions.api`, `ui.pages[].route`
+- [x] `app.json`: set `name`, `routes`, `permissions.api`, `ui.pages[].route`
       to `kiro-crew-terminals`; set `displayName` and page `label` to
       `Crew Terminals`.
-- [ ] `backend/package.json` + `backend/package-lock.json`: rename package to
+- [x] `backend/package.json` + `backend/package-lock.json`: rename package to
       `kiro-crew-terminals-backend`; update description.
-- [ ] `backend/server.mjs`: set `APP_NAME = 'kiro-crew-terminals'`; update log
+- [x] `backend/server.mjs`: set `APP_NAME = 'kiro-crew-terminals'`; update log
       prefixes `[herdr-views]` -> `[crew-terminals]`.
-- [ ] `backend/lib/session-manager.mjs`: use `appDataDir('kiro-crew-terminals')`.
-- [ ] `backend/lib/paths.mjs`: rename `.herdr-views` -> `.crew-terminals`.
-- [ ] `ui/package.json` + `ui/package-lock.json`: rename package to
+- [x] `backend/lib/session-manager.mjs`: use `appDataDir('kiro-crew-terminals')`.
+- [x] `backend/lib/paths.mjs`: rename `.herdr-views` -> `.crew-terminals`.
+- [x] `ui/package.json` + `ui/package-lock.json`: rename package to
       `kiro-crew-terminals-ui`.
-- [ ] `ui/src/index.jsx`: update `APP`, `PANE_KEY`, postMessage `source`, and
+- [x] `ui/src/index.jsx`: update `APP`, `PANE_KEY`, postMessage `source`, and
       console prefix to `kiro-crew-terminals`; brand `Herdr Views` ->
       `Crew Terminals`.
-- [ ] `.gitignore`: rename `.herdr-views/` -> `.crew-terminals/`.
-- [ ] `README.md`: update title to `Kiro Crew Terminals` and path/data-dir/brand
+- [x] `.gitignore`: rename `.herdr-views/` -> `.crew-terminals/`.
+- [x] `README.md`: update title to `Kiro Crew Terminals` and path/data-dir/brand
       references.
-- [ ] `agents.md`: update `appDataDir('kiro-crew-terminals')`, `.crew-terminals/`,
+- [x] `agents.md`: update `appDataDir('kiro-crew-terminals')`, `.crew-terminals/`,
       and the provider invariant.
-- [ ] Rebuild `ui/dist/index.mjs` (`cd ui && npm run build`) and commit the
+- [x] Rebuild `ui/dist/index.mjs` (`cd ui && npm run build`) and commit the
       regenerated artifact.
-- [ ] (Optional) `cd backend && npm install --omit=dev` to refresh the lockfile.
+- [x] (Optional) `cd backend && npm install --omit=dev` to refresh the lockfile.
+      (Done as a direct edit of the lockfile `name` fields instead — no
+      `npm install` needed, which would have compiled node-pty pointlessly.)
+- [x] Also renamed (required by the completion criteria, not listed above):
+      `backend/lib/config.mjs` `appDataDir` argument, the root `package.json` /
+      `package-lock.json` name, `Makefile` `APP_NAME` + header comment,
+      `.github/workflows/ci.yml` header comment, and the old-name literals in
+      `backend/test/{paths,proxy-verify,server-routes}.test.mjs` and
+      `ui/test/{api,actions,pane-state,toast-bus}.test.mjs`.
 
 ## Implementation order
 

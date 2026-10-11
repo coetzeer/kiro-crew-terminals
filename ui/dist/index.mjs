@@ -6028,7 +6028,7 @@ function Se({ id: D, ...F }) {
   const N = Ze[D] || Me;
   return /* @__PURE__ */ W(N, { ...F });
 }
-const Qe = "kiro-herdr-views", et = "/apps/" + Qe + "/api", ne = (D) => et + D;
+const Qe = "kiro-crew-terminals", et = "/apps/" + Qe + "/api", ne = (D) => et + D;
 async function Le(D, F) {
   let N = "";
   try {
@@ -6061,7 +6061,7 @@ async function Ie(D) {
 function Pe(D) {
   return ne("/sessions/" + encodeURIComponent(D)) + "?kill=1";
 }
-const He = "kiro-herdr-views:panes", Fe = "kiro-herdr-views:active";
+const He = "kiro-crew-terminals:panes", Fe = "kiro-crew-terminals:active";
 function Ce() {
   try {
     return typeof window < "u" && window.localStorage || null;
@@ -6317,10 +6317,10 @@ function mt(D, F) {
 }
 function St(D, F) {
   try {
-    typeof window < "u" && window.parent && typeof window.parent.postMessage == "function" && window.parent !== window && window.parent.postMessage({ source: "kiro-herdr-views", type: "notify", text: F, severity: D }, "*");
+    typeof window < "u" && window.parent && typeof window.parent.postMessage == "function" && window.parent !== window && window.parent.postMessage({ source: "kiro-crew-terminals", type: "notify", text: F, severity: D }, "*");
   } catch {
   }
-  console.log("[herdr-views]", F);
+  console.log("[crew-terminals]", F);
 }
 const Ne = gt();
 function bt(D) {
@@ -6679,7 +6679,7 @@ function xt() {
   return /* @__PURE__ */ Y("div", { className: "hv-root", children: [
     /* @__PURE__ */ W(Ct, {}),
     /* @__PURE__ */ Y("div", { className: "hv-sidebar", children: [
-      /* @__PURE__ */ W("div", { className: "hv-brand", children: "Herdr Views" }),
+      /* @__PURE__ */ W("div", { className: "hv-brand", children: "Crew Terminals" }),
       /* @__PURE__ */ Y("div", { className: "hv-section-title" + (d.providers ? " hv-collapsed" : ""), onClick: function() {
         g("providers");
       }, children: [

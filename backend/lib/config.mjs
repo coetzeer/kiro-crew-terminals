@@ -7,7 +7,7 @@ let configCache = null;
 export function loadConfig() {
   if (configCache) return configCache;
 
-  const configPath = path.join(appDataDir('kiro-herdr-views'), 'config.json');
+  const configPath = path.join(appDataDir('kiro-crew-terminals'), 'config.json');
   if (!existsSync(configPath)) {
     configCache = getDefaultConfig();
     return configCache;
