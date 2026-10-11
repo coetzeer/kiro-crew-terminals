@@ -6,6 +6,21 @@ import xtermCss from 'xterm/css/xterm.css?inline';
 import appCss from './index.css?inline';
 import { ProviderIcon } from './icons.jsx';
 
+// Framework-free modules extracted so their logic is unit-testable without
+// React or xterm: the API client, pane/persistence state, the ws→sse→rest
+// transport ladder, and the user-action flows. See AGENTS.md invariants —
+// `mount` stays the exported entry.
+import { apiGet, apiPost, px } from './api.mjs';
+import {
+  loadPanes, savePanes, loadActive, saveActive,
+  addPane, removePane, prunePanes, nextActive, flattenDiscovered,
+} from './pane-state.mjs';
+import { createTermTransport, dimsKey, hasLayout } from './term-transport.mjs';
+import {
+  openDiscoveredSession, restartSession,
+  killDiscoveredSession as killDiscoveredFlow, killSession as killFlow,
+} from './actions.mjs';
+
 let cssInjected = false;
 function injectCss() {
   if (cssInjected) return;
@@ -15,78 +30,7 @@ function injectCss() {
   document.head.appendChild(s);
 }
 
-const APP = 'kiro-herdr-views';
-const PROXY_BASE = '/apps/' + APP + '/api';
-const PANE_KEY = 'kiro-herdr-views:panes';
-const ACTIVE_KEY = 'kiro-herdr-views:active';
-const px = (p) => PROXY_BASE + p;
-
 const cmdText = (cmd) => (Array.isArray(cmd) ? cmd.join(' ') : String(cmd || ''));
-
-function loadPanes() {
-  try {
-    const raw = window.localStorage.getItem(PANE_KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.filter((s) => s && s.ref && s.cmd && s.providerId !== 'custom') : [];
-  } catch {
-    return [];
-  }
-}
-
-function savePanes(panes) {
-  try {
-    window.localStorage.setItem(PANE_KEY, JSON.stringify(panes));
-  } catch {}
-}
-
-function loadActive() {
-  try {
-    return window.localStorage.getItem(ACTIVE_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-function saveActive(ref) {
-  try {
-    window.localStorage.setItem(ACTIVE_KEY, ref || '');
-  } catch {}
-}
-
-// Surface the server's own message where there is one. A 409 "name already
-// exists" and a failed-kill reason are the only things that tell the user what
-// to do next, and reporting a bare status code threw both away.
-async function readError(res, label) {
-  let detail = '';
-  try {
-    const body = await res.json();
-    detail = (body && (body.error || body.reason)) || '';
-  } catch {}
-  return new Error(detail || label + ' -> ' + res.status);
-}
-
-async function apiGet(path) {
-  const r = await fetch(path, { credentials: 'same-origin' });
-  if (!r.ok) throw await readError(r, 'GET ' + path);
-  return r.json();
-}
-
-async function apiPost(path, body) {
-  const r = await fetch(path, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  });
-  if (!r.ok) throw await readError(r, 'POST ' + path);
-  return r.json();
-}
-
-async function apiDelete(path) {
-  const r = await fetch(path, { method: 'DELETE', credentials: 'same-origin' });
-  if (!r.ok) throw await readError(r, 'DELETE ' + path);
-  return r.json();
-}
 
 // In-app toast bus — extracted to toast-bus.mjs (framework-free) so the dedupe
 // logic is unit-testable. Errors must survive on screen until the user
@@ -175,9 +119,6 @@ function terminalTheme() {
 
 function TerminalPane({ session, ended, killable, onExit, onClose, onKill, onRestart }) {
   const containerRef = React.useRef(null);
-  const modeRef = React.useRef('ws');
-  const wsRef = React.useRef(null);
-  const sseRef = React.useRef(null);
   const onExitRef = React.useRef(onExit);
 
   React.useEffect(() => {
@@ -190,7 +131,6 @@ function TerminalPane({ session, ended, killable, onExit, onClose, onKill, onRes
     if (ended) return undefined;
 
     let disposed = false;
-    let exited = false;
     const term = new Terminal({
       convertEol: true,
       fontSize: 13,
@@ -214,28 +154,57 @@ function TerminalPane({ session, ended, killable, onExit, onClose, onKill, onRes
       themeObs.observe(document.head, { childList: true });
     } catch {}
 
+    const cleanup = () => {
+      if (disposed) return;
+      disposed = true;
+      transport.dispose();
+      if (themeObs) { try { themeObs.disconnect(); } catch {} }
+      if (ro) { try { ro.disconnect(); } catch {} }
+      window.removeEventListener('resize', onWin);
+      // Switching sessions unmounts this pane and mounts the next, so without
+      // disposing, every tab switch would strand a live xterm with its listeners.
+      try { term.dispose(); } catch {}
+    };
+
+    // The ws→sse→rest ladder lives in term-transport.mjs; this component wires
+    // it to the xterm instance. An exit signal marks the pane ended exactly
+    // once and tears the whole pane down.
+    const transport = createTermTransport({
+      wsUrl: () => {
+        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        return proto + '://' + window.location.host + px('/ws?ref=' + encodeURIComponent(session.ref));
+      },
+      sseUrl: () => px('/sse?ref=' + encodeURIComponent(session.ref)),
+      postInput: (data) => { apiPost(px('/input'), { ref: session.ref, data }).catch(() => {}); },
+      postResize: (dims) => { apiPost(px('/resize'), { ref: session.ref, cols: dims.cols, rows: dims.rows }).catch(() => {}); },
+      onChunk: (data) => term.write(data),
+      // On open, re-send the grid: the replayed buffer puts a fresh xterm back
+      // where the session was, and the resize makes the mux repaint its screen
+      // so a full-screen TUI is not left half-drawn.
+      onOpen: () => applyFit(),
+      onExit: () => {
+        if (onExitRef.current) onExitRef.current(session.ref);
+        cleanup();
+      },
+    });
+
     const sendResize = () => {
       try {
-        const dims = { cols: term.cols, rows: term.rows };
-        if (wsRef.current && wsRef.current.readyState === 1) {
-          wsRef.current.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
-        } else {
-          apiPost(px('/resize'), { ref: session.ref, cols: dims.cols, rows: dims.rows }).catch(() => {});
-        }
+        transport.resize(term.cols, term.rows);
       } catch {}
     };
 
-    // Only push a resize when the grid actually changed. This runs from a
-    // ResizeObserver, which fires on every layout tick while a splitter or the
-    // window is dragged — and each send is a SIGWINCH the mux has to repaint
-    // for. Nothing to report while the box has no size yet, which is also what
-    // fit() would choke on.
+    // Only push a resize when the grid actually changed (dimsKey). This runs
+    // from a ResizeObserver, which fires on every layout tick while a splitter
+    // or the window is dragged — and each send is a SIGWINCH the mux has to
+    // repaint for. Nothing to report while the box has no size yet (hasLayout),
+    // which is also what fit() would choke on.
     let lastDims = '';
     const applyFit = () => {
       const el = containerRef.current;
-      if (!el || !el.clientWidth || !el.clientHeight) return;
+      if (!hasLayout(el)) return;
       try { fit.fit(); } catch { return; }
-      const dims = term.cols + 'x' + term.rows;
+      const dims = dimsKey(term.cols, term.rows);
       if (dims === lastDims) return;
       lastDims = dims;
       sendResize();
@@ -254,72 +223,9 @@ function TerminalPane({ session, ended, killable, onExit, onClose, onKill, onRes
       ro.observe(containerRef.current);
     } catch {}
 
-    term.onData((data) => {
-      if (wsRef.current && wsRef.current.readyState === 1) {
-        wsRef.current.send(JSON.stringify({ type: 'input', data }));
-      } else {
-        apiPost(px('/input'), { ref: session.ref, data }).catch(() => {});
-      }
-    });
+    term.onData((data) => transport.input(data));
 
-    const markExit = () => {
-      if (exited) return;
-      exited = true;
-      if (onExitRef.current) onExitRef.current(session.ref);
-    };
-
-    const cleanup = () => {
-      if (disposed) return;
-      disposed = true;
-      if (wsRef.current) { try { wsRef.current.close(); } catch {} }
-      if (sseRef.current) { try { sseRef.current.close(); } catch {} }
-      if (themeObs) { try { themeObs.disconnect(); } catch {} }
-      if (ro) { try { ro.disconnect(); } catch {} }
-      window.removeEventListener('resize', onWin);
-      // Switching sessions unmounts this pane and mounts the next, so without
-      // disposing, every tab switch would strand a live xterm with its listeners.
-      try { term.dispose(); } catch {}
-    };
-
-    const useSse = () => {
-      if (disposed || modeRef.current === 'sse') return;
-      modeRef.current = 'sse';
-      const es = new EventSource(px('/sse?ref=' + encodeURIComponent(session.ref)));
-      sseRef.current = es;
-      es.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data);
-          if (msg.type === 'chunk') term.write(msg.data);
-          if (msg.type === 'exit') { markExit(); cleanup(); }
-        } catch {}
-      };
-      es.onerror = () => {};
-    };
-
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = proto + '://' + window.location.host + px('/ws?ref=' + encodeURIComponent(session.ref));
-    let ws = null;
-    try { ws = new WebSocket(wsUrl); } catch {}
-    wsRef.current = ws;
-
-    if (ws) {
-      // On open, re-send the grid: the replayed buffer puts a fresh xterm back
-      // where the session was, and the resize makes the mux repaint its screen
-      // so a full-screen TUI is not left half-drawn.
-      ws.onopen = () => { applyFit(); };
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data);
-          if (msg.type === 'chunk') term.write(msg.data);
-          if (msg.type === 'error') { if (!disposed) useSse(); }
-          if (msg.type === 'exit') { markExit(); cleanup(); }
-        } catch {}
-      };
-      ws.onerror = () => { if (!disposed) useSse(); };
-      ws.onclose = () => { if (!disposed) useSse(); };
-    } else {
-      useSse();
-    }
+    transport.connect();
 
     // Effects run after commit, but the browser may not have laid the box out
     // yet; a fit at zero size would leave the grid at the default 80x24.
@@ -557,14 +463,10 @@ function App() {
       const r = await apiGet(px('/providers'));
       setProviders(r.providers || []);
       clearToast('providers');
+      // Drop a pane only when the backend has genuinely forgotten the session
+      // (prunePanes: live ∪ known, ended panes kept for restart).
       const alive = new Set([...(r.sessions || []), ...(r.known || [])].map((s) => s.ref));
-      setPanes((prev) => {
-        // Drop a pane only when the backend has genuinely forgotten the
-        // session. Pruning against live sessions alone wiped every open pane
-        // during the window after a backend restart, before restore() finished.
-        const next = prev.filter((p) => alive.has(p.ref) || endedRef.current[p.ref]);
-        return next.length === prev.length ? prev : next;
-      });
+      setPanes((prev) => prunePanes(prev, alive, endedRef.current));
     } catch (e) {
       // Dedupe-keyed so the 8s poll failing repeatedly shows one toast, and it
       // clears itself the next time the poll succeeds.
@@ -590,108 +492,54 @@ function App() {
 
   // The active session can be closed, pruned or killed out from under the view.
   React.useEffect(() => {
-    if (activeRef && panes.some((p) => p.ref === activeRef)) return;
-    setActiveRef(panes.length ? panes[panes.length - 1].ref : '');
+    setActiveRef(nextActive(panes, activeRef));
   }, [panes, activeRef]);
 
   React.useEffect(() => {
-    const groups = (providers || []).filter((p) => !selectedProvider || p.id === selectedProvider);
-    const found = [];
-    for (const g of groups) for (const s of (g.sessions || [])) found.push({ providerId: g.id, ...s });
-    setDiscovered(found);
+    setDiscovered(flattenDiscovered(providers, selectedProvider));
   }, [providers, selectedProvider]);
 
   const openPane = React.useCallback((session) => {
     if (!session || !session.ref) return;
-    // One pane per mirror: two panes on the same ref means two xterms sending
-    // input to a single PTY, so every keystroke would be written twice.
-    setPanes((prev) => (prev.some((p) => p.ref === session.ref) ? prev : [...prev, session]));
+    // addPane dedupes by ref: two panes on the same ref means two xterms
+    // sending input to a single PTY, so every keystroke would be written twice.
+    setPanes((prev) => addPane(prev, session));
     markEnded(session.ref, false);
     setActiveRef(session.ref);
   }, [markEnded]);
 
   const closePane = React.useCallback((ref) => {
-    setPanes((prev) => prev.filter((p) => p.ref !== ref));
+    setPanes((prev) => removePane(prev, ref));
     markEnded(ref, false);
   }, [markEnded]);
 
-  const openDiscovered = async (s) => {
-    const providerId = s.providerId || s.provider;
-    try {
-      // Send the provider's own ref (a screen pid, say) instead of replaying
-      // its command: the ref is what keeps two same-named screen sessions
-      // apart, and the server resolves it against the live list.
-      const res = await apiPost(px('/sessions'), { provider: providerId, ref: s.ref });
-      openPane(res.session);
-    } catch (e) {
-      notify('Could not open ' + providerId + ':' + s.name + ' — ' + String(e), 'error');
-      refresh();
-    }
-  };
+  // Detach (✕) is purely client-side: closing a pane never issues a request,
+  // so the host session always keeps running (invariant #1). The kill flows
+  // below are the only place a DELETE is issued, always with ?kill=1.
+  const openDiscovered = (s) => openDiscoveredSession(s, {
+    onSession: openPane,
+    onError: (msg) => notify(msg, 'error'),
+    refresh,
+  });
 
-  const restartPane = async (session) => {
-    const isProvider = Boolean(session.providerId && session.providerId !== 'custom');
-    if (!isProvider) {
-      notify('Custom command sessions are no longer supported. Choose a configured tool instead.', 'error');
-      return;
-    }
-    try {
-      const res = await apiPost(px('/sessions'), { provider: session.providerId, name: session.name });
-      closePane(session.ref);
-      openPane(res.session);
-    } catch (e) {
-      // The usual restart failure is that only our mirror died while the host
-      // session is still there, so creating it again is refused. Attach to what
-      // is already running instead of leaving the pane stuck on an error.
-      if (isProvider) {
-        try {
-          const res = await apiPost(px('/sessions'), { provider: session.providerId, ref: session.key || session.name });
-          closePane(session.ref);
-          openPane(res.session);
-          return;
-        } catch {}
-      }
-      notify('Could not restart ' + session.name + ' — ' + String(e), 'error');
-    }
-  };
+  const restartPane = (session) => restartSession(session, {
+    onSession: openPane,
+    onClose: closePane,
+    onError: (msg) => notify(msg, 'error'),
+  });
 
-  const killDiscoveredSession = async (session) => {
-    const ok = window.confirm(
-      'Kill the ' + session.providerId + ' session "' + session.name + '"?\n\n'
-      + 'This terminates it on the host and cannot be undone.'
-    );
-    if (!ok) return;
-    const ref = session.providerId + ':' + (session.ref || session.name);
-    try {
-      const res = await apiDelete(px('/sessions/' + encodeURIComponent(ref)) + '?kill=1');
-      notify(res.killed
-        ? 'Killed ' + session.providerId + ':' + session.name
-        : 'Could not kill ' + session.providerId + ':' + session.name + '. ' + (res.reason || ''), res.killed ? 'info' : 'error');
-    } catch (e) {
-      notify('Kill failed — ' + String(e), 'error');
-    }
-    refresh();
-  };
+  const killDiscovered = (session) => killDiscoveredFlow(session, {
+    confirm: (msg) => window.confirm(msg),
+    notify,
+    refresh,
+  });
 
-  const killSession = async (session) => {
-    const ok = window.confirm(
-      'Kill the ' + session.providerId + ' session "' + session.name + '"?\n\n'
-      + 'This terminates it on the host and cannot be undone. To leave it running, use ✕ instead.'
-    );
-    if (!ok) return;
-    try {
-      const res = await apiDelete(px('/sessions/' + encodeURIComponent(session.ref)) + '?kill=1');
-      if (res.killed) {
-        notify('Killed ' + session.providerId + ':' + session.name);
-      } else {
-        notify('Closed the view. ' + (res.reason || 'The host session could not be killed.'), 'error');
-      }
-    } catch (e) {
-      notify('Kill failed — ' + String(e), 'error');
-    }
-    closePane(session.ref);
-    refresh();
-  };
+  const killActive = (session) => killFlow(session, {
+    confirm: (msg) => window.confirm(msg),
+    notify,
+    onClose: closePane,
+    refresh,
+  });
 
   const killableFor = (providerId) => {
     const p = (providers || []).find((x) => x.id === providerId);
@@ -789,7 +637,7 @@ function App() {
                   {killableFor(s.providerId) && (
                     <button
                       className="hv-kill"
-                      onClick={(e) => { e.stopPropagation(); killDiscoveredSession(s); }}
+                      onClick={(e) => { e.stopPropagation(); killDiscovered(s); }}
                       title={'Force-stop this ' + s.providerId + ' session on the host — cannot be undone'}
                     >
                       Kill
@@ -812,7 +660,7 @@ function App() {
               killable={killableFor(active.providerId)}
               onExit={(ref) => { markEnded(ref, true); refresh(); }}
               onClose={() => closePane(active.ref)}
-              onKill={() => killSession(active)}
+              onKill={() => killActive(active)}
               onRestart={() => restartPane(active)}
             />
           ) : (

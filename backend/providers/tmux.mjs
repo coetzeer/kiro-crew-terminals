@@ -13,13 +13,20 @@ const run = (cmd, args) =>
   });
 
 export class TmuxProvider extends Provider {
-  constructor() {
+  // `run` (command runner), `findBin` and `delay` are seams for tests: a
+  // scripted runner covers parsing/error paths without tmux installed, a stub
+  // resolver avoids the `which` spawn, and an instant delay keeps the kill
+  // confirmation path from sleeping.
+  constructor(opts = {}) {
     super({ id: 'tmux', label: 'tmux', bin: 'tmux' });
+    this.run = opts.run || run;
+    this.find = opts.findBin || findBin;
+    this.delay = opts.delay || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   async list() {
-    const bin = findBin('tmux');
-    const r = await run(bin, ['list-sessions', '-F', '#{session_name}']);
+    const bin = this.find('tmux');
+    const r = await this.run(bin, ['list-sessions', '-F', '#{session_name}']);
     if (!r.ok) return [];
     return r.out
       .split(/\r?\n/)
@@ -32,8 +39,8 @@ export class TmuxProvider extends Provider {
   }
 
   async create(name) {
-    const bin = findBin('tmux');
-    const r = await run(bin, ['new-session', '-d', '-s', name]);
+    const bin = this.find('tmux');
+    const r = await this.run(bin, ['new-session', '-d', '-s', name]);
     // Swallowing this failure is what made three providers all end up attached
     // to one tmux session: tmux rejects a duplicate name, the error was dropped,
     // and the returned attach command pointed at the session that already
@@ -53,18 +60,18 @@ export class TmuxProvider extends Provider {
   }
 
   async kill({ key, name }) {
-    const bin = findBin('tmux');
+    const bin = this.find('tmux');
     const target = String(key || name || '');
     if (!target) return { ok: false, reason: 'no tmux session name given' };
     // `=` forces an exact-name target. Without it tmux falls back to prefix
     // matching, so killing "work" would happily kill "workshop" when the exact
     // name is already gone.
-    const r = await run(bin, ['kill-session', '-t', '=' + target]);
+    const r = await this.run(bin, ['kill-session', '-t', '=' + target]);
     if (r.ok) return { ok: true };
     // "no server running" and friends mean the session is already gone, so the
     // goal is met even though the exit code says failure. Report the state, not
     // the exit code — otherwise the UI cries failure over a killed session.
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await this.delay(250);
     const still = await this.list();
     return still.some((s) => s.name === target)
       ? { ok: false, reason: 'tmux could not kill session "' + target + '": ' + (r.err || 'unknown tmux error') }

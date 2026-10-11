@@ -62,7 +62,9 @@ export function reduceToasts(prev, evt) {
   return [...rest, t];
 }
 
-function defaultHostPing(severity, text) {
+// Exported for tests: the host-postMessage path is best-effort everywhere, so
+// the no-host and throwing-host fallbacks need direct exercise.
+export function defaultHostPing(severity, text) {
   try {
     // best-effort host toast; ignore failures when running without the host SDK
     if (typeof window !== 'undefined' && window.parent && typeof window.parent.postMessage === 'function' && window.parent !== window) {
