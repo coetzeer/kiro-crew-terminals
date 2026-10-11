@@ -105,11 +105,18 @@ health:
 test: test-unit test-ui test-backend
 
 # Framework-free unit tests via Node's built-in test runner (no extra deps).
-# Backend test files import the compiled node-pty (backend/node_modules),
-# which the build step ensures is present.
+# Tests inject fake PTYs, stub providers and scripted command runners, so
+# node-pty does NOT need to be compiled first — only express + ws must be
+# present in backend/node_modules (`make backend-deps` or a plain npm install).
 test-unit:
 	@echo "==> Unit tests (node --test)"
 	node --test "backend/test/*.test.mjs" "ui/test/*.test.mjs"
+
+# Same suite with per-file coverage; covers server.mjs, session-manager.mjs,
+# the providers and the extracted UI logic, not just the helper modules.
+test-coverage:
+	@echo "==> Unit tests with coverage (node --test)"
+	node --test --experimental-test-coverage "backend/test/*.test.mjs" "ui/test/*.test.mjs"
 
 test-backend:
 	@echo "==> Backend syntax check"

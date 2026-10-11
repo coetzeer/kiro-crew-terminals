@@ -19,13 +19,16 @@ const run = (cmd, args) =>
 //   aoe session start NAME     -> starts the session's tmux process
 //   aoe session attach NAME    -> attach (by title or id)
 export class AoeProvider extends Provider {
-  constructor() {
+  // Seams for tests — see TmuxProvider.
+  constructor(opts = {}) {
     super({ id: 'aoe', label: 'agent-of-empires', bin: 'aoe', multi: false });
+    this.run = opts.run || run;
+    this.find = opts.findBin || findBin;
   }
 
   async list() {
-    const bin = findBin('aoe');
-    const r = await run(bin, ['list', '--json']);
+    const bin = this.find('aoe');
+    const r = await this.run(bin, ['list', '--json']);
     if (!r.ok || !r.out.trim()) return [];
     let data;
     try {
@@ -47,15 +50,15 @@ export class AoeProvider extends Provider {
   }
 
   async create(name) {
-    const bin = findBin('aoe');
-    const added = await run(bin, ['add', '--scratch', '-t', name]);
+    const bin = this.find('aoe');
+    const added = await this.run(bin, ['add', '--scratch', '-t', name]);
     if (!added.ok) {
       throw new Error('aoe refused to create "' + name + '": ' + (added.err || 'unknown aoe error'));
     }
     // `add` only writes the record; the tmux process that an attach needs does
     // not exist until the session is started. Reporting success here without
     // this step is how a pane comes up attached to nothing.
-    const started = await run(bin, ['session', 'start', name]);
+    const started = await this.run(bin, ['session', 'start', name]);
     if (!started.ok) {
       const detail = started.err || 'unknown aoe error';
       if (/agent hook paths have not been acknowledged/i.test(detail)) {
@@ -64,7 +67,7 @@ export class AoeProvider extends Provider {
       // Undo the record we just made so a failed create does not leave a dead
       // session in `aoe list` for the user to clean up. Best-effort: the
       // original error is what matters and must still surface.
-      await run(bin, ['remove', name]).catch(() => {});
+      await this.run(bin, ['remove', name]).catch(() => {});
       throw new Error('aoe created "' + name + '" but could not start it: ' + detail);
     }
     return { ref: name, name, provider: this.id, cmd: [bin, 'session', 'attach', name] };

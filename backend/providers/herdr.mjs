@@ -20,13 +20,16 @@ const run = (cmd, args) =>
 //   herdr session list --json  ->  {"sessions":[{"name","running","default",...}]}
 //   herdr --session <name>     ->  launch or attach to that named session
 export class HerdrProvider extends Provider {
-  constructor() {
+  // Seams for tests — see TmuxProvider.
+  constructor(opts = {}) {
     super({ id: 'herdr', label: 'herdr', bin: 'herdr', multi: false });
+    this.run = opts.run || run;
+    this.find = opts.findBin || findBin;
   }
 
   async list() {
-    const bin = findBin('herdr');
-    const r = await run(bin, ['session', 'list', '--json']);
+    const bin = this.find('herdr');
+    const r = await this.run(bin, ['session', 'list', '--json']);
     if (r.ok && r.out.trim()) {
       try {
         const data = JSON.parse(r.out);
@@ -45,7 +48,7 @@ export class HerdrProvider extends Provider {
     // Plain `session list` is a table whose first column is the name and whose
     // first line is a header. Parsed rather than dropped so an older/newer
     // herdr that lacks --json still shows something instead of an empty list.
-    const p = await run(bin, ['session', 'list']);
+    const p = await this.run(bin, ['session', 'list']);
     if (!p.ok) return [];
     return p.out
       .split(/\r?\n/)
@@ -58,7 +61,7 @@ export class HerdrProvider extends Provider {
   }
 
   async create(name) {
-    const bin = findBin('herdr');
+    const bin = this.find('herdr');
     // There is nothing to pre-create. `herdr --session <name>` materialises the
     // session when the mirror runs it, so the honest return is that attach
     // command — running `herdr init` here (which does not exist) is what made
@@ -76,10 +79,10 @@ export class HerdrProvider extends Provider {
   }
 
   async kill({ key, name }) {
-    const bin = findBin('herdr');
+    const bin = this.find('herdr');
     const target = String(key || name || '');
     if (!target) return { ok: false, reason: 'no herdr session given' };
-    const r = await run(bin, ['session', 'stop', target]);
+    const r = await this.run(bin, ['session', 'stop', target]);
     if (r.ok) return { ok: true };
     // A stopped Herdr session remains in the persistent session list. Confirm
     // its running state before reporting a failed stop to the user.

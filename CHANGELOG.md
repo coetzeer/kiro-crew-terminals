@@ -4,6 +4,43 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Unit test coverage for the whole core** (plans/testing/2026-10-11-unit-test-coverage.md,
+  now completed). The suite grew from ~30 helper tests to 221 tests across session-manager
+  lifecycle, server routes, SSE/WebSocket transports, all five providers, the registry, and the
+  extracted UI logic — all runnable without a compiled `node-pty` and without tmux/screen/
+  zellij/herdr/aoe installed:
+  - `SessionManager` accepts injected `pty` + `dataDir` dependencies (production defaults
+    unchanged); `node-pty` now loads best-effort via dynamic import so the module imports even
+    before the native build has run.
+  - `createServer()` accepts injected `registry` / `sessionManager` / `verify` /
+    `allowUnsigned` (production defaults unchanged); `nextFreeName` is exported with an
+    injectable random source.
+  - Providers accept injected `run` / `findBin` / `delay` seams; tests drive parsing, stderr
+    surfacing, fallbacks and kill semantics through a scripted runner.
+  - UI non-rendering logic extracted into framework-free modules (`api.mjs`, `pane-state.mjs`,
+    `term-transport.mjs`, `actions.mjs`) and unit-tested; `index.jsx` wires them unchanged.
+  - Detach-vs-kill safety has an explicit regression test for every branch: `DELETE` without
+    `?kill=1` provably never touches `Provider.kill()`, and killable/non-killable/discovered/
+    malformed-ref paths each assert which of `close()` vs `kill()` ran, via spies.
+  - `npm test` / `npm run test:coverage` scripts; a `make test-coverage` target; and a CI
+    workflow (`.github/workflows/ci.yml`) that runs the unit suite, coverage, backend syntax
+    checks and the UI bundle invariants **without installing node-pty** — proving the suite
+    needs no native compile.
+
+### Fixed
+
+- **A mirror exit with registered viewers crashed the exit handler.**
+  `SessionManager`'s `onExit` called `o.clear()` on viewer entries, but viewers are *arrays* of
+  callbacks (added by the SSE/WS transports), and arrays have no `clear()` — every mirror exit
+  with a live viewer threw a `TypeError` inside the PTY exit callback. Now empties each
+  collection with `o.length = 0` as intended.
+- **A changed provider-native key orphaned the persisted record.** When `restore()`'s resolver
+  returned `{ cmd, key }` (a screen pid rotates across restarts), the new record was added under
+  the fresh key but the stale record stayed in `known` forever, resurfacing on every restart.
+  The stale record is now retired so exactly one record remains.
+
 ### Changed
 
 - **Sidebar sections are now collapsible.** Click a section title (Providers, Open Sessions,

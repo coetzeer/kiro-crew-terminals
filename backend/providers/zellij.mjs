@@ -10,16 +10,21 @@ const run = (cmd, args) =>
   });
 
 export class ZellijProvider extends Provider {
-  constructor() {
+  // Seams for tests — see TmuxProvider. The injectable delay matters most here:
+  // readiness polling and kill retries sleep in 200–400ms steps otherwise.
+  constructor(opts = {}) {
     super({ id: 'zellij', label: 'zellij', bin: 'zellij' });
+    this.run = opts.run || run;
+    this.find = opts.findBin || findBin;
+    this.delay = opts.delay || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
   async list() {
-    const bin = findBin('zellij');
+    const bin = this.find('zellij');
     // --short prints the bare session name. `-n` is not enough: it strips the
     // ANSI colour but still appends " [Created 6m 20s ago]", so every discovered
     // zellij session arrived with that suffix glued onto its name.
-    const r = await run(bin, ['list-sessions', '--short']);
+    const r = await this.run(bin, ['list-sessions', '--short']);
     if (!r.ok) return [];
     return r.out
       .split(/\r?\n/)
@@ -34,9 +39,9 @@ export class ZellijProvider extends Provider {
   // --create-background` is the current spelling; the legacy form is tried
   // second so older installs keep working.
   async create(name) {
-    const bin = findBin('zellij');
-    let r = await run(bin, ['attach', '--create-background', name]);
-    if (!r.ok) r = await run(bin, ['--session', name, '--detach']);
+    const bin = this.find('zellij');
+    let r = await this.run(bin, ['attach', '--create-background', name]);
+    if (!r.ok) r = await this.run(bin, ['--session', name, '--detach']);
     if (!r.ok) {
       throw new Error('zellij refused to create session "' + name + '": ' + (r.err || 'unknown zellij error'));
     }
@@ -57,7 +62,7 @@ export class ZellijProvider extends Provider {
     while (Date.now() < deadline) {
       const sessions = await this.list();
       if (sessions.some((s) => s.name === name)) return true;
-      await new Promise((r) => setTimeout(r, 200));
+      await this.delay(200);
     }
     return false;
   }
@@ -71,7 +76,7 @@ export class ZellijProvider extends Provider {
   }
 
   async kill({ key, name }) {
-    const bin = findBin('zellij');
+    const bin = this.find('zellij');
     const target = String(key || name || '');
     if (!target) return { ok: false, reason: 'no zellij session name given' };
     // --force is required to delete a session that still has clients attached.
@@ -80,13 +85,13 @@ export class ZellijProvider extends Provider {
     // is retried once before giving up.
     let r = { ok: false, err: '' };
     for (let attempt = 0; attempt < 2; attempt++) {
-      r = await run(bin, ['delete-session', '--force', target]);
+      r = await this.run(bin, ['delete-session', '--force', target]);
       if (r.ok) return { ok: true };
       if (await this.isGone(target)) return { ok: true };
-      r = await run(bin, ['kill-session', target]);
+      r = await this.run(bin, ['kill-session', target]);
       if (r.ok) return { ok: true };
       if (await this.isGone(target)) return { ok: true };
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await this.delay(400);
     }
     return { ok: false, reason: 'zellij could not delete session "' + target + '": ' + (r.err || 'unknown zellij error') };
   }
@@ -97,7 +102,7 @@ export class ZellijProvider extends Provider {
   // would report a failure the user would try to act on while the session is
   // already gone. Ask the session list instead.
   async isGone(name) {
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await this.delay(250);
     const sessions = await this.list();
     return !sessions.some((s) => s.name === name);
   }

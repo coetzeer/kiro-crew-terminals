@@ -23,12 +23,12 @@ function p(path) {
   return BASE + path;
 }
 
-function nextFreeName(id, taken) {
+export function nextFreeName(id, taken, rand = Math.random) {
   for (let i = 1; i <= 99; i++) {
     const candidate = id + '-' + String(i).padStart(2, '0');
     if (!taken.has(candidate)) return candidate;
   }
-  return id + '-' + Math.random().toString(36).slice(2, 6);
+  return id + '-' + rand().toString(36).slice(2, 6);
 }
 
 // Pick a session name that does not collide with a live one. Names are checked
@@ -45,18 +45,32 @@ async function freeName(prov, wanted) {
   };
 }
 
-export function createServer(opts) {
-  const app = express();
-  const server = http.createServer(app);
-  const sessionManager = new SessionManager();
-  const allowUnsigned = (process.env.KIRO_HERRD_ALLOW_UNSIGNED === '1');
-
+// The production registry. Split out so tests can inject a stub registry (a
+// real one would `which`/list actual host multiplexers) while runtime wiring
+// stays exactly as before.
+export function createDefaultRegistry() {
   const registry = new ProviderRegistry();
   registry.register(new TmuxProvider());
   registry.register(new ScreenProvider());
   registry.register(new ZellijProvider());
   registry.register(new HerdrProvider());
   registry.register(new AoeProvider());
+  return registry;
+}
+
+// `opts` is a dependency seam for tests: registry, sessionManager, verify and
+// allowUnsigned default to the production values, so only tests substitute
+// fakes (stub providers, fake PTYs) — no route ever reaches a real multiplexer
+// from the unit suite.
+export function createServer(opts = {}) {
+  const app = express();
+  const server = http.createServer(app);
+  const sessionManager = opts.sessionManager || new SessionManager();
+  const verify = opts.verify || verifyProxyRequest;
+  const allowUnsigned = opts.allowUnsigned !== undefined
+    ? Boolean(opts.allowUnsigned)
+    : process.env.KIRO_HERRD_ALLOW_UNSIGNED === '1';
+  const registry = opts.registry || createDefaultRegistry();
 
   // Keep the raw bytes alongside the parsed body: the gateway's proxy HMAC is
   // computed over sha256(body) as sent, so verification must hash the original
@@ -67,7 +81,7 @@ export function createServer(opts) {
 
   function guard(req, res, next) {
     if (allowUnsigned) return next();
-    if (verifyProxyRequest(req, APP_NAME)) return next();
+    if (verify(req, APP_NAME)) return next();
     res.status(403).json({ error: 'forbidden' });
   }
 
@@ -316,7 +330,7 @@ export function createServer(opts) {
       return;
     }
     if (!allowUnsigned) {
-      if (!verifyProxyRequest(req, APP_NAME)) {
+      if (!verify(req, APP_NAME)) {
         socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
         socket.destroy();
         return;

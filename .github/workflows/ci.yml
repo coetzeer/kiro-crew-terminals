@@ -1,0 +1,42 @@
+# CI for the Kiro Herdr Views app.
+#
+# The unit suite is deliberately run without node-pty: tests inject fake PTYs
+# and stub providers (plans/testing/2026-10-11-unit-test-coverage.md), so only
+# the pure-JS backend deps (express, ws) are installed. That keeps CI green on
+# runners where the native module would be a compile risk, and proves the
+# completion criterion "the suite runs without a compiled node-pty".
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pure-JS backend dependencies (no node-pty compile)
+        run: cd backend && npm install --no-save express ws
+
+      - name: Install UI dependencies
+        run: cd ui && npm install
+
+      - name: Backend syntax checks
+        run: make test-backend
+
+      - name: Unit tests
+        run: make test-unit
+
+      - name: Unit tests with coverage
+        run: make test-coverage
+
+      - name: UI build + committed-bundle invariant checks
+        run: make test-ui

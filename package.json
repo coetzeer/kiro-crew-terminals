@@ -6,6 +6,10 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "test": "node --test \"backend/test/*.test.mjs\" \"ui/test/*.test.mjs\"",
+    "test:coverage": "node --test --experimental-test-coverage \"backend/test/*.test.mjs\" \"ui/test/*.test.mjs\""
+  },
   "dependencies": {
     "express": "^4.21.0",
     "node-pty": "^1.0.0",

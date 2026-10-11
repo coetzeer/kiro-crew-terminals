@@ -1,10 +1,27 @@
-import * as pty from 'node-pty';
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { appDataDir } from './paths.mjs';
 
 const MAX_BUFFER = 2000;
+
+// node-pty is a native module that must be compiled before it can load, but
+// importing it eagerly made every test file that touches this module fail until
+// the build had run. Load it best-effort instead: production always has it
+// installed, and tests inject their own spawn function so they never need it.
+let nodePty = null;
+try {
+  nodePty = await import('node-pty');
+} catch {
+  nodePty = null;
+}
+
+function spawnRealPty(shell, args, opts) {
+  if (!nodePty) {
+    throw new Error('node-pty is not available (pass a pty spawn function to SessionManager to run without it)');
+  }
+  return nodePty.spawn(shell, args, opts);
+}
 
 // A SessionMirror is one live PTY that runs an attach command to a real,
 // long-lived session (tmux attach / screen -r / zellij attach / herdr repl...).
@@ -16,7 +33,10 @@ const MAX_BUFFER = 2000;
 // sessions also survive Kiro Crew restarts (as long as the underlying host
 // session still exists — tmux / screen / herdr / aoe are host processes).
 export class SessionManager extends EventEmitter {
-  constructor() {
+  // `pty` is a spawn(shell, args, opts) seam and `dataDir` a persistence-path
+  // seam; both default to the production dependencies so runtime behavior is
+  // unchanged and only tests substitute fakes.
+  constructor({ pty, dataDir } = {}) {
     super();
     // Every web viewer adds one `exit` listener for its own socket, so the count
     // scales with viewers-per-session rather than with a leak. The default limit
@@ -26,11 +46,17 @@ export class SessionManager extends EventEmitter {
     this.dir = null;
     this.stateFile = null;
     this.known = []; // array of { ref, providerId, name, key, cmd, cwd }
+    this._spawn = pty || spawnRealPty;
+    this._dataDir = dataDir || null;
   }
 
   ensureDir() {
     if (!this.dir) {
-      this.dir = appDataDir('kiro-herdr-views');
+      // An injected dataDir keeps tests off the real app data dir; the default
+      // stays appDataDir('kiro-herdr-views') — invariant: session state lives
+      // under the app data dir, never in the repo.
+      this.dir = this._dataDir || appDataDir('kiro-herdr-views');
+      mkdirSync(this.dir, { recursive: true });
       this.stateFile = path.join(this.dir, 'known-sessions.json');
     }
     return this.dir;
@@ -106,7 +132,7 @@ export class SessionManager extends EventEmitter {
     const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' };
     const cwdResolved = cwd || this.dir;
 
-    const p = pty.spawn(shell, args, {
+    const p = this._spawn(shell, args, {
       name: 'xterm-256color',
       cols: 120,
       rows: 36,
@@ -145,7 +171,9 @@ export class SessionManager extends EventEmitter {
       this.known = this.known.filter((k) => k.ref !== ref);
       this.persist();
       this.emit('exit', ref, exitCode);
-      for (const o of mirror.viewers) o.clear();
+      // Viewer entries are arrays of callbacks (see the SSE/WS transports);
+      // emptying them keeps a late chunk from reaching a closed socket.
+      for (const o of mirror.viewers) o.length = 0;
     });
 
     this.sessions.set(ref, mirror);
@@ -193,6 +221,13 @@ export class SessionManager extends EventEmitter {
         }
       }
       try {
+        // A resolver-updated key (a screen pid rotates across restarts) means
+        // the persisted record is stale: retire it here so the re-keyed record
+        // buildMirror adds replaces it instead of orphaning the old ref in
+        // `known` forever.
+        if (key !== k.key) {
+          this.known = this.known.filter((x) => x.ref !== k.ref);
+        }
         this.buildMirror({ providerId: k.providerId, name: k.name, cmd, cwd: k.cwd, key });
       } catch (err) {
         // forget sessions we can no longer attach to rather than erroring forever
