@@ -40,6 +40,11 @@ All notable changes to this project will be documented in this file.
   returned `{ cmd, key }` (a screen pid rotates across restarts), the new record was added under
   the fresh key but the stale record stayed in `known` forever, resurfacing on every restart.
   The stale record is now retired so exactly one record remains.
+- **`make install` is FUSE-free and no longer needs AppImage CLI verbs.** Install/uninstall now
+  resolve the `kirocrew` CLI through `scripts/kirocrew.sh` — from `$KIROCREW`, then `$PATH`, then
+  the AppImage mount of a running gateway, and only as a last resort a temporary headless mount
+  of the Kiro Crew AppImage to use the CLI bundled inside it. `package.json` and
+  `backend/package.json` also declare `allowScripts` for `node-pty`.
 
 ### Changed
 
@@ -81,6 +86,13 @@ All notable changes to this project will be documented in this file.
 - README provider/API tables updated; `create-command` documented as name-optional, `DELETE`
   and the kill semantics added.
 - **UI rebuilt**: Ran `npm install && npm run build` in `ui/` to sync uncommitted frontend changes to the installed app copy.
+- **README and AGENTS.md synced with the implementation.** README gained a current-state
+  overview and corrected attach/kill verbs (`herdr --session`, `aoe session attach`,
+  `herdr session stop`); the gateway header is documented as `X-KiroCrew-Proxy` (secret
+  injected as `KIROCREW_PROXY_SECRET`), and the proxy path split
+  (`/apps/kiro-herdr-views/api/*` → backend `/api/*`) is spelled out. AGENTS.md gained
+  invariants for provider-only command spawning and the proxy path split, plus a `make test`
+  verification section.
 
 ### Added
 
