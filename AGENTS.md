@@ -18,10 +18,14 @@ independent parts:
 - `app.json` — the Kiro Crew app manifest (backend entry, UI page + mount, permissions,
   setup hooks).
 
+The UI keeps several sessions open but renders exactly one active terminal at a time. The
+sidebar owns navigation between open/discovered sessions; do not reintroduce tiled panes
+without deliberately revisiting the resize, persistence, and active-session model.
+
 ## Critical invariants — do not break
 
 1. **Closing a view never kills the real session; killing is a separate, explicit request.**
-   The backend runs *attach* commands (`tmux attach`, `screen -r`, `herdr attach`, ...).
+   The backend runs *attach* commands (`tmux attach`, `screen -r`, `herdr --session`, ...).
    Closing a pane — or `DELETE /sessions/:ref` without `?kill=1` — only tears down this app's
    mirror PTY, and the host session keeps running. Terminating a host session happens *only*
    through `DELETE /sessions/:ref?kill=1`, *only* for a provider that declares `canKill()`, and
@@ -37,11 +41,16 @@ independent parts:
 4. **React/ReactDOM must remain external.** The bundle must not bundle React/ReactDOM; they
    are provided by the Kiro Crew host via import map. Duplicate React causes invariant #306.
 5. **The signature must stay accurate.** `lib/proxy-verify.mjs` checks the gateway's
-   `X-Crew-Proxy` HMAC. Run gauge of "signed vs unsigned": `KIRO_HERRD_ALLOW_UNSIGNED=1`
-   bypasses it — **only** for local dev/debug, never in production default.
+   `X-KiroCrew-Proxy` HMAC. The `KIRO_HERRD_ALLOW_UNSIGNED=1` flag bypasses it — **only** for local dev/debug, never in production default.
 6. **Persistence path must stay under the app data dir.** `lib/session-manager.mjs` writes
    `known-sessions.json` under `appDataDir('kiro-herdr-views')` (`.herdr-views/`). Keep session
    state out of the repo — it's gitignored.
+7. **Only registered providers may spawn commands.** `POST /api/sessions` rejects caller-supplied
+   `cmd` arrays. Preserve this boundary: the server resolves create/attach commands through a
+   provider after validating its native session identity.
+8. **Keep the proxy path split straight.** The browser calls
+   `/apps/kiro-herdr-views/api/*`; the gateway forwards `/api/*` to the backend. UI helpers use
+   the former and Express routes use the latter.
 
 ## Build steps that MUST be repeated after UI changes
 
@@ -54,6 +63,20 @@ cd ui && npm run build
 
 and commit the regenerated `ui/dist/index.mjs`. A stale bundle that doesn't match `ui/src/`
 is a bug. CSS is inlined into the bundle (via `?inline` imports); the page loads a single file.
+
+## Verification
+
+Run the full repository check before handing off code changes:
+
+```bash
+make test
+```
+
+This runs the backend/UI tests with Node's built-in test runner, rebuilds the production UI,
+checks the bundle's default and `mount` exports plus React externalization, and syntax-checks
+the backend and all provider modules. CI runs the same suite plus coverage on every pull
+request and push to `main`. For a UI-only edit, `cd ui && npm run build` is still the
+minimum check because it also refreshes the committed bundle.
 
 ## Backend environment
 
@@ -70,7 +93,7 @@ Each provider in `backend/providers/` subclasses [`lib/registry.mjs`](backend/li
 `Provider` and implements `available()` / `list()` / `create()` / `createCommand()` and exposes an
 attach command, plus optional `canKill()` / `kill()` for providers with a stable stop verb.
 `createCommand(name)` returns the argv used to create a new session (e.g.
-`zellij attach --create-background <name>`, `aoe new -n <name>`); the
+`zellij attach --create-background <name>`, `aoe add --scratch -t <name>`); the
 `GET /providers/:id/create-command` endpoint serves it to the UI. `create(name)` actually runs
 creation and returns the attach command for the new session — it must **throw** when creation
 fails rather than returning an attach command for a session that was never made. `list()`
@@ -82,15 +105,27 @@ All five (tmux, screen, zellij, herdr, aoe) are first-class; keep them interchan
 registry can pick any. New providers (e.g. SSH/remote) are new files here — don't special-case
 them in `server.mjs`.
 
+Kill support is currently opt-in for tmux, screen, zellij, and Herdr; aoe deliberately inherits
+the non-killable base behavior. A provider kill must target the provider-native identity and
+confirm the resulting provider state when the CLI's exit status is unreliable.
+
 ## Transport chain
 
 WebSocket is primary, SSE is fallback, REST `POST /input` + `POST /resize` is last resort.
 If you touch `server.mjs`, keep all three working — the UI auto-falls back.
 
+All non-health HTTP and WebSocket routes fail closed unless the gateway HMAC verifies.
+`express.json()` must retain the original body bytes for this check, and `req.url` must remain
+the raw request target; reserializing either changes the signed value. Unsigned mode is only
+for standalone development via `KIRO_HERRD_ALLOW_UNSIGNED=1`.
+
 ## Repo conventions
 
 - ESM only. Use `node:`-prefixed built-ins.
 - UI is React 18 + xterm.js; CSS imported with `?inline` and injected by `mount`.
+- Tests use `node:test`; keep pure UI state logic in small DOM-free modules when practical.
+- Use dashboard CSS custom properties for surfaces and text so every theme remains readable.
+- Keep provider CLI stderr in user-visible errors; silent command failures are not actionable.
 - `.gitignore` excludes `node_modules/`, `*.log`, `.env*`, `known-sessions.json`, `.herdr-views/`.
 
 ## Plans

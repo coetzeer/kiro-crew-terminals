@@ -1,0 +1,2 @@
+- When reporting a breakage, expects the assistant to dig into git history to find the root cause before patching ("look at the history and figure out how to fix"). Confidence: 0.65
+- Expects fixes to be verified empirically by actually running the command end to end ("run make install to verify that it's working") rather than asserted. Confidence: 0.6

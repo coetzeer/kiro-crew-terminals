@@ -4,10 +4,24 @@ A **Kiro Crew** app that puts long-lived, interactive terminal sessions into you
 dashboard — a *Herdr* or *agent-of-empires*-style view, rendered right in a web page.
 
 Attach to real sessions running on your host — **tmux**, **GNU screen**, **zellij**,
-**herdr**, and **agent-of-empires (aoe)** are all first-class. You can have sessions from
-several of them open at once, side by side, and chop and change freely.
+**herdr**, and **agent-of-empires (aoe)** are all first-class. Keep several sessions open
+at once and switch between full-size terminal views from the sidebar.
 
-![?](https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=dark%20web%20dashboard%20showing%20a%20grid%20of%20multiple%20interactive%20terminal%20windows%20for%20tmux%20herdr%20screen%20zellij%20and%20agent-of-empires%20sessions%2C%20left%20sidebar%20listing%20session%20managers%2C%20sleek%20modern%20UI&image_size=landscape_4_3)
+## Current state
+
+- Five provider integrations: tmux, screen, zellij, Herdr, and agent-of-empires.
+- Provider discovery plus create/attach flows with collision-free generated names.
+- One active terminal fills the content area; open and discovered sessions live in the
+  collapsible sidebar, with the active view restored after reload.
+- Closing detaches only the app's PTY mirror. Killing a host session is a separate,
+  confirmed action and is available only when the provider implements it.
+- PTY mirrors survive browser navigation, are restored from the known-session registry
+  after backend restarts, and replay an in-memory 2,000-chunk buffer to new viewers.
+- WebSocket transport with SSE fallback, responsive PTY resizing, theme-token styling,
+  provider icons, and deduplicated persistent error toasts.
+- `make test` is green: 221 unit tests across the backend and UI, a production UI build
+  with bundle-contract checks, and syntax checks for the backend and every provider; CI
+  runs the same suite plus coverage on pushes and pull requests.
 
 ---
 
@@ -18,7 +32,7 @@ Your sessions have two independent lives, and the view survives both kinds of "l
 1. **The real session** — a tmux / screen / zellij / herdr / aoe process on the host.
    It is a host process, so it survives tab reloads, page navigation, and app restarts.
 2. **The view of it** — a backend PTY mirror that runs the *attach* command
-   (`tmux attach`, `screen -r`, `zellij attach`, `herdr attach`, `aoe attach`), plus one
+   (`tmux attach`, `screen -r`, `zellij attach`, `herdr --session`, `aoe session attach`), plus one
    or more web panes subscribed to it.
 
 The backend owns the mirrors, so **navigating away from the view, closing a tab, or even
@@ -30,11 +44,11 @@ That persistence is layered:
 - **Known-session registry** — every created session is written to
   `known-sessions.json` in the app data dir (`.herdr-views/`).
 - **Auto-restore on restart** — on backend startup, stored sessions are re-attached
-  automatically (re-resolving a fresh attach command, because tmux ids and herdr refs can
-  change between restarts). Mirrors that can no longer attach are dropped instead of
+  automatically (re-resolving a fresh attach command, because provider state can change and
+  screen PIDs are not stable across restarts). Mirrors that can no longer attach are dropped instead of
   failing forever.
-- **Panes in the browser** — open panes are remembered in `localStorage` and restored on
-  reload; gone sessions drop out of the grid.
+- **Views in the browser** — open sessions and the active session are remembered in
+  `localStorage` and restored on reload; sessions that are no longer known are pruned.
 
 ---
 
@@ -55,7 +69,7 @@ That persistence is layered:
   - `lib/session-manager.mjs` — owns the PTY mirrors, persists known sessions, auto-restores on start.
   - `lib/registry.mjs` — provider abstraction so every session manager is interchangeable.
   - `providers/` — `tmux`, `screen`, `zellij`, `herdr`, `aoe`.
-  - `lib/proxy-verify.mjs` — verifies the gateway's HMAC-signed `X-Crew-Proxy` header.
+  - `lib/proxy-verify.mjs` — verifies the gateway's HMAC-signed `X-KiroCrew-Proxy` header.
 - **UI** (`ui/`) — React + [xterm.js](https://xtermjs.org/). Built by Vite into
   `ui/dist/index.mjs` which:
   - **Externalizes** `react`, `react-dom`, `react-dom/client`, `react/jsx-runtime` to share the host's React instance (avoids duplicate React and invariant #306).
@@ -91,15 +105,16 @@ Or use the bundled `Makefile`, which wraps the whole build/test/install cycle:
 | Target | What it does |
 |--------|--------------|
 | `make build`    | UI build + backend deps (same as above) |
-| `make test`     | `node --check` on every backend file + UI bundle checks (default export, `mount` export, `react` external, no `process.env`) |
+| `make test`     | 221 Node unit tests + production UI build/bundle checks + `node --check` on every backend/provider file |
+| `make test-coverage` | the same suite with per-file coverage (also `npm run test:coverage`) |
 | `make install`  | build, then install into the Crew app dir. Uninstalls a prior copy first (the gateway rejects re-installing an already-installed app), stages the tree, and provisions `backend/` + `ui/` deps (the gateway often skips the `onInstall` npm hooks) |
 | `make uninstall`| remove the app (best-effort) |
 | `make dev`      | run the backend standalone on `:8787` with HMAC verification off |
 | `make health`   | `curl http://127.0.0.1:8787/health` |
 
-`make install` installs through the `kirocrew` CLI (FUSE-free), falling back to the
-AppImage at `~/apps/KiroCrew-x86_64.AppImage --app-install` when the CLI isn't on PATH
-(the AppImage needs FUSE to mount, which many sandboxes disallow). After staging it runs
+`make install` uses `scripts/kirocrew.sh` to find the `kirocrew` CLI from `KIROCREW`,
+`PATH`, or a running Kiro Crew mount. As a last resort it temporarily mounts the AppImage
+at `~/apps/KiroCrew-x86_64.AppImage` and invokes the CLI bundled inside it. After staging it runs
 `npm install --omit=dev` in the installed `backend/` and `npm install && npm run build`
 in the installed `ui/`, so the app dir is fully provisioned even when the gateway skips
 the lifecycle hooks. Override the AppImage path with `KIRO_APP=...` and the app name/data
@@ -111,11 +126,11 @@ the dashboard.
 ### Install & enable
 
 ```bash
-kirocrew app install /path/to/kiro-crew-terminals
-kirocrew app enable kiro-herdr-views
+make install
 ```
 
-You can also install from the dashboard **App Store → Sources → Install from local path**.
+Then enable **Herdr Views** from **App Store → Library**. You can also install from the
+dashboard via **App Store → Sources → Install from local path**.
 Installing and enabling runs the manifest's lifecycle hooks, which build the app:
 
 ```bash
@@ -125,7 +140,7 @@ cd ui && npm install && npm run build && cd ../backend && npm install --omit=dev
 
 Once enabled, **Herdr Views** appears in the dashboard sidebar (`section: Apps`) at
 `/apps/kiro-herdr-views`. The gateway launches `backend/server.mjs` as a subprocess and
-reverse-proxies `/api/apps/kiro-herdr-views/*` to it.
+reverse-proxies browser requests from `/apps/kiro-herdr-views/api/*` to backend `/api/*`.
 
 ### Disable / uninstall
 
@@ -177,7 +192,8 @@ When installed as a Crew app, the backend stores its state under the app data di
 - `~/.kiro/crew/apps/kiro-herdr-views/.herdr-views/` — `known-sessions.json` and any
   per-provider state. Overridable for standalone runs with `KIRO_HERRD_DATA_DIR`.
 - `~/.kiro/crew/apps/kiro-herdr-views/.app_secret` — the HMAC secret the gateway uses to
-  sign `X-Crew-Proxy` headers (also available as `KIRO_HERRD_APP_SECRET`). The backend
+  sign `X-KiroCrew-Proxy` headers (injected as `KIROCREW_PROXY_SECRET`; the legacy
+  `KIRO_HERRD_APP_SECRET` fallback is also accepted). The backend
   verifies it via [`backend/lib/proxy-verify.mjs`](backend/lib/proxy-verify.mjs); set
   `KIRO_HERRD_ALLOW_UNSIGNED=1` only for local development.
 
@@ -190,7 +206,7 @@ When installed as a Crew app, the backend stores its state under the app data di
 | `tmux`   | `tmux list-sessions -F '#{session_name}'` | `tmux attach -t <name>` | `tmux new-session -d -s <name>` | `tmux kill-session -t '=<name>'` |
 | `screen` | `screen -ls` | `screen -r <pid>` | `screen -d -m -S name /bin/bash -l` | `screen -S <pid> -X quit` |
 | `zellij` | `zellij list-sessions --short` | `zellij attach <name>` | `zellij attach --create-background <name>` | `zellij delete-session --force <name>` |
-| `herdr`  | `herdr session list --json` | `herdr --session <name>` | `herdr --session <name>` | — (not supported) |
+| `herdr`  | `herdr session list --json` | `herdr --session <name>` | `herdr --session <name>` | `herdr session stop <name>` |
 | `aoe`    | `aoe list --json` | `aoe session attach <name>` | `aoe add --scratch -t <name>` + `aoe session start <name>` | — (not supported) |
 
 Identity: a session is keyed by `provider:native-key`, where the native key is the session
@@ -208,9 +224,12 @@ a new session manager (e.g. an SSH/remote tunnelled provider) is just a new file
 
 ---
 
-## API (proxied at `/api/apps/kiro-herdr-views`)
+## API
 
-All routes except `/health` verify the gateway `X-Crew-Proxy` HMAC (unless
+The browser calls `/apps/kiro-herdr-views/api/*`; the gateway forwards that to the
+backend's `/api/*` routes listed below.
+
+All routes except `/health` verify the gateway `X-KiroCrew-Proxy` HMAC (unless
 `KIRO_HERRD_ALLOW_UNSIGNED=1`).
 
 | Method | Path | Purpose |
@@ -219,7 +238,7 @@ All routes except `/health` verify the gateway `X-Crew-Proxy` HMAC (unless
 | GET | `/sessions` | List open mirror sessions |
 | GET | `/known` | List persisted (known) sessions across restarts |
 | GET | `/providers/:id/create-command?name=` | Provider-specific creation command, plus the session name to use. `name` is optional: without it the server generates the lowest free `<provider>-<nn>` from the provider's live session list, and reports `taken`/`suggested` when the requested name is in use |
-| POST | `/sessions` | Attach a session. `provider`+`ref` attaches an existing discovered session by its provider-native ref; `provider` (no `ref`/`cmd`) creates a provider session, generating a free name when none is given (409 with `suggested` if the requested name exists); `cmd` (array) attaches manually/custom |
+| POST | `/sessions` | Attach a session. `provider`+`ref` attaches an existing discovered session by its provider-native ref; `provider` without `ref` creates a provider session, generating a free name when none is given (409 with `suggested` if the requested name exists). Custom command arrays are rejected |
 | DELETE | `/sessions/:ref` | Drop this app's mirror for a session (detach — the host session keeps running). `?kill=1` additionally terminates the underlying session for providers where `killable` is true, and reports `{ killed, reason }` |
 | POST | `/input` | Write input to a session (`{ ref, data }`) |
 | POST | `/resize` | Resize a session PTY (`{ ref, cols, rows }`) |
@@ -228,19 +247,17 @@ All routes except `/health` verify the gateway `X-Crew-Proxy` HMAC (unless
 
 ### Creating sessions
 
-Selecting a provider in the UI auto-populates its provider-specific creation command
-(served by `GET /providers/:id/create-command`) and shows the generated session name as a
-placeholder — the name field stays empty unless the user types one, so the generated default
-is per-provider instead of a value that sticks across provider changes. Editing the command
-switches to manual attach mode and sends it as `cmd` to `POST /sessions`.
+Selecting a provider asks `GET /providers/:id/create-command` for a collision-free generated
+name and shows it as the input placeholder. The name field stays empty unless the user types
+one, so the default is per-provider instead of sticking across provider changes. Creation is
+restricted to registered providers; arbitrary command attachment is intentionally unsupported.
 
 ### Closing vs killing
 
-Closing a view (`✕`, or `DELETE /sessions/:ref`) only detaches this app's mirror: the tmux /
-screen / zellij session keeps running on the host, exactly as before. Killing is a separate,
-explicitly confirmed action that asks the provider to terminate the host session. Providers
-that have no stable stop verb (`herdr`, `aoe`) report `canKill: false` and the UI does not
-offer it.
+Closing a view (`✕`, or `DELETE /sessions/:ref`) only detaches this app's mirror: the host
+session keeps running. Killing is a separate, explicitly confirmed action that asks the
+provider to terminate the host session. tmux, screen, zellij, and Herdr implement this;
+agent-of-empires reports `canKill: false`, so the UI does not offer it there.
 
 ---
 
