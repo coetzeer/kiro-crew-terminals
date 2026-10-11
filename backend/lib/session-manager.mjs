@@ -145,7 +145,9 @@ export class SessionManager extends EventEmitter {
       this.known = this.known.filter((k) => k.ref !== ref);
       this.persist();
       this.emit('exit', ref, exitCode);
-      for (const o of mirror.viewers) o.clear();
+      // Viewer entries are arrays of callbacks (see the SSE/WS transports);
+      // emptying them keeps a late chunk from reaching a closed socket.
+      for (const o of mirror.viewers) o.length = 0;
     });
 
     this.sessions.set(ref, mirror);
@@ -193,6 +195,13 @@ export class SessionManager extends EventEmitter {
         }
       }
       try {
+        // A resolver-updated key (a screen pid rotates across restarts) means
+        // the persisted record is stale: retire it here so the re-keyed record
+        // buildMirror adds replaces it instead of orphaning the old ref in
+        // `known` forever.
+        if (key !== k.key) {
+          this.known = this.known.filter((x) => x.ref !== k.ref);
+        }
         this.buildMirror({ providerId: k.providerId, name: k.name, cmd, cwd: k.cwd, key });
       } catch (err) {
         // forget sessions we can no longer attach to rather than erroring forever
